@@ -1,0 +1,7 @@
+https://localhost {
+    tls internal
+    reverse_proxy api:8080 {
+        health_uri /api/health
+        health_interval 10s
+    }
+}

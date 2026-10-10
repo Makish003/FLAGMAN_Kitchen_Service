@@ -1,0 +1,16 @@
+export type Product = { id: string; name: string; unit: string; warningHours: number; archived?: boolean; physical: number; usable: number; expired: number; expiring: number };
+export type Ingredient = { productId: string; quantity: number };
+export type Shortage = { productId: string; productName: string; unit: string; requested: number; available: number; missing: number; dishIds: string[] };
+export type Dish = { id: string; name: string; category: string; ingredients: Ingredient[]; portions: number; shortages: Shortage[]; archived?: boolean };
+export type Batch = { id: string; deliveryId: string; productId: string; initialQuantity: number; remainingQuantity: number; receivedAt: string; expiresAt: string; manufacturedAt: string | null; shelfLifeHours: number | null; expiryBasis: string; status: string };
+export type Delivery = { id: string; number: string; createdAt: string; receivedAt: string; batchIds: string[] };
+export type Order = { id: string; createdAt: string; status: string; items: {dishId: string; portions: number}[]; shortages: Shortage[] };
+export type Movement = { id: string; batchId: string; productId: string; quantity: number; kind: string; orderId: string | null; at: string };
+export type Reason = { batchId: string; productName: string; quantity: number; unit: string; expiresAt: string; hoursLeft: number };
+export type Recommendation = { dishId: string; dishName: string; score: number; availablePortions: number; reasons: Reason[] };
+export type SalePlan = { dishId: string; dishName: string; portions: number; reasons: Reason[] };
+export type Procurement = { productId: string; name: string; unit: string; dailyDemand: number; target: number; usableAtArrival: number; quantity: number; neededAt: string; basis: string };
+export type Forecast = { dishId: string; dishName: string; stopAt: string | null; reason: string; dailyDemand: number; hasHistory: boolean };
+export type Analytics = { from: string; to: string; products: {id: string; name: string; unit: string; consumed: number; wasted: number; shortageCount: number; shortageQuantity: number; affectedDishes: string[]}[]; ordersAccepted: number; ordersRejected: number; lossBatches: number; daily: {day: string; accepted: number; rejected: number}[] };
+export type Settings = { timezone: string; warningHours: number; demandWindowDays: number; planningHours: number; leadTimeHours: number; safetyFactor: number; forecastHours: number };
+export type Snapshot = { now: string; revision: number; settings: Settings; products: Product[]; dishes: Dish[]; batches: Batch[]; deliveries: Delivery[]; orders: Order[]; movements: Movement[]; recommendations: Recommendation[]; salePlan: SalePlan[]; procurement: Procurement[]; forecasts: Forecast[]; analytics: Analytics; warning: string; totals: {batches: number; deliveries: number; orders: number; movements: number} };

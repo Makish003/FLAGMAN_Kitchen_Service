@@ -1,0 +1,12 @@
+.tools/
+tmp/
+**/bin/
+**/obj/
+**/node_modules/
+backend/data/
+backend/wwwroot/
+.env
+test-results/
+output/
+**/*.tsbuildinfo
+/hack.rar

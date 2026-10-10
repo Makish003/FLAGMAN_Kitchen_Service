@@ -1,0 +1,16 @@
+PASS R01–R05 R10 FEFO 2kg + 3kg / 2.5kg
+PASS R07–R09 shared ingredients reject atomically
+PASS R01 R09 R19 idempotency accepted / rejected / conflict
+PASS R04 R11 R12 R17 exact expiry, repeated write-off and replenishment
+PASS R02 R06 validation units and recipes
+PASS R04 manufactured / received / local end of day
+PASS R14–R16 urgency monotonic, shared sale plan, unavailable excluded
+PASS R13 R18 R19 analytics and manual procurement
+PASS R20 manual continuous demand and expiry without history
+PASS R22 deterministic generator sequence
+PASS R08 R09 real SQLite parallel connections, last portion
+PASS R01 R09 rollback invalid second line and persistence after restart
+PASS R08 R09 independent processes contend for final portion
+METRIC snapshot 1000 batches average 59ms (target <2000ms)
+PASS R25 small-restaurant load evidence (1000 batches)
+14 critical domain / real database checks passed.

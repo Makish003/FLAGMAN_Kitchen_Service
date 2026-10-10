@@ -1,0 +1,5 @@
+import {Button,Input,Combobox,Table,Dialog} from './components';
+import type { Snapshot } from './types';
+export function PlanningView({s,date,kind}:{s:Snapshot;date:(s:string)=>string;kind:'procurement'|'forecast'}) {
+  return <section className="panel"><div className="panel-title"><div><h2>{kind==='procurement'?'План закупок':'Прогноз стоп-листа'}</h2><p>{s.warning}</p></div></div><div className="table-wrap"><Table>{kind==='procurement'?<><thead><tr><th>Продукт</th><th>Количество</th><th>Нужно к</th><th>Основание</th></tr></thead><tbody>{s.procurement.map(p=><tr key={p.productId}><td>{p.name}</td><td>{p.quantity} {p.unit}</td><td>{date(p.neededAt)}</td><td>{p.basis}</td></tr>)}</tbody></>:<><thead><tr><th>Блюдо</th><th>Ожидаемый момент</th><th>История</th><th>Основание</th></tr></thead><tbody>{s.forecasts.map(f=><tr key={f.dishId}><td>{f.dishName}</td><td>{f.stopAt?date(f.stopAt):'Не определён'}</td><td>{f.hasHistory?'Есть наблюдения':'Недостаточно данных'}</td><td>{f.reason}</td></tr>)}</tbody></>}</Table></div>{kind==='procurement'&&!s.procurement.length&&<p className="empty">Текущий запас покрывает рассчитанную потребность.</p>}</section>;
+}

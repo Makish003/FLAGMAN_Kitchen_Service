@@ -1,0 +1,12 @@
+
+> flagman-ui@1.0.0 test:e2e
+> playwright test
+
+
+Running 3 tests using 1 worker
+
+  ok 1 e2e\app.spec.ts:3:1 › dashboard, all pages, stock forms, order, expiry and mobile layout (4.7s)
+  ok 2 e2e\app.spec.ts:33:1 › API authorization, idempotency, concurrency and two SSE clients with replay (2.1s)
+  ok 3 e2e\app.spec.ts:51:1 › background expiration without orders, no repeated write-off, generator start and stop (9.1s)
+
+  3 passed (18.2s)

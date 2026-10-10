@@ -1,0 +1,11 @@
+.tools
+tmp
+test-results
+.git
+.env
+**/node_modules
+**/bin
+**/obj
+backend/data
+backend/wwwroot
+output

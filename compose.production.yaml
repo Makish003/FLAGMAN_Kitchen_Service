@@ -1,0 +1,41 @@
+services:
+  api:
+    build: .
+    restart: unless-stopped
+    environment:
+      FLAGMAN_PASSWORD: ${FLAGMAN_PASSWORD:?Set a private password}
+      FLAGMAN_DEMO: "false"
+      FLAGMAN_SESSION_VERSION: ${FLAGMAN_SESSION_VERSION:-1}
+      FLAGMAN_DB: /data/flagman.db
+      FLAGMAN_TRUSTED_PROXY: 172.28.0.10
+    volumes:
+      - production-data:/data
+    networks:
+      - flagman
+  proxy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      FLAGMAN_DOMAIN: ${FLAGMAN_DOMAIN:?Set your DNS domain}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile.production:/etc/caddy/Caddyfile:ro
+      - caddy-production-data:/data
+      - caddy-production-config:/config
+    networks:
+      flagman:
+        ipv4_address: 172.28.0.10
+    depends_on:
+      api:
+        condition: service_healthy
+networks:
+  flagman:
+    ipam:
+      config:
+        - subnet: 172.28.0.0/24
+volumes:
+  production-data:
+  caddy-production-data:
+  caddy-production-config:

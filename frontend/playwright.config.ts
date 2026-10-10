@@ -1,0 +1,2 @@
+import { defineConfig } from '@playwright/test';
+export default defineConfig({ testDir: './e2e', timeout: 45000, workers: 1, use: { baseURL: process.env.BASE_URL ?? 'http://127.0.0.1:5080', viewport: { width: 1440, height: 960 }, headless: true, launchOptions: { executablePath: process.env.FLAGMAN_BROWSER }, screenshot: 'only-on-failure' }, reporter: [['list']], outputDir: '../test-results/browser' });
