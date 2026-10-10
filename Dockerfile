@@ -3,6 +3,7 @@ WORKDIR /src/frontend
 COPY frontend/package*.json ./
 RUN npm ci --no-audit --no-fund
 COPY frontend/ ./
+COPY tools/design/build-tokens.mjs /src/tools/design/build-tokens.mjs
 RUN npm run build
 
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build

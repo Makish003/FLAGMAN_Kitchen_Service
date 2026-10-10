@@ -2,26 +2,27 @@ import {useState} from 'react';
 import {Button,Input,Combobox,Table,Empty} from './components';
 import {api} from './api';
 import {restaurantUtc} from './time';
+import {useCalculation} from './useCalculation';
 import {qty,number,shortId} from './format';
 import type {Snapshot,PlannerResult,OrderPreset} from './types';
 export function OffersView({s,date,onOrder,onDetail}:{s:Snapshot;date:(v:string)=>string;onOrder:(items:OrderPreset)=>void;onDetail:(id:string)=>void}) {
   const [source,setSource]=useState('stock'),[horizon,setHorizon]=useState('12'),[shift,setShift]=useState(''),[scenario,setScenario]=useState('normal');
   const [prep,setPrep]=useState(0),[capacity,setCapacity]=useState(10000),[objective,setObjective]=useState('risk'),[currency,setCurrency]=useState('RUB');
-  const [limits,setLimits]=useState<Record<string,number>>({}),[result,setResult]=useState<PlannerResult>(),[busy,setBusy]=useState(false),[error,setError]=useState('');
-  const reset=()=>setResult(undefined);
-  const run=async()=>{setBusy(true);setError('');try{setResult(await api('/planning','POST',{horizonHours:+horizon,...(shift?{shiftEnd:restaurantUtc(shift,s.settings.timezone)}:{}),demandSource:source,manualLimits:limits,preparationMinutes:prep,kitchenPortionsPerSlot:capacity,scenario,objective,currency}));}catch(e){setError((e as Error).message);}finally{setBusy(false);}};
+  const [limits,setLimits]=useState<Record<string,number>>({});
+  const {result,error,busy,run:calculate}=useCalculation<PlannerResult>([source,horizon,shift,scenario,prep,capacity,objective,currency,limits,s.settings.timezone]);
+  const run=()=>calculate(signal=>api('/planning','POST',{horizonHours:+horizon,...(shift?{shiftEnd:restaurantUtc(shift,s.settings.timezone)}:{}),demandSource:source,manualLimits:limits,preparationMinutes:prep,kitchenPortionsPerSlot:capacity,scenario,objective,currency},undefined,signal));
   const stale=result&&(s.revision>result.revision||new Date(s.now)>=new Date(result.validUntil));
   const order=(rows:PlannerResult['plan'])=>{const combined=new Map<string,number>();rows.forEach(p=>combined.set(p.dishId,(combined.get(p.dishId)??0)+p.portions));onOrder([...combined].map(([dishId,portions])=>({dishId,portions})));};
   return <><section className="panel planning-panel"><h2>Параметры совместного плана</h2><p>Расчёт не резервирует склад. Заказ проверяется повторно при подтверждении.</p><div className="form-grid">
-    <label>Горизонт<Combobox value={horizon} onChange={e=>{setHorizon(e.target.value);reset();}}>{[6,12,24].map(h=><option key={h} value={h}>{h} часов</option>)}</Combobox></label>
-    <label>Конец смены ({s.settings.timezone})<Input type="datetime-local" value={shift} onChange={e=>{setShift(e.target.value);reset();}}/><small>Необязательно; заменяет горизонт</small></label>
-    <label>Источник спроса<Combobox value={source} onChange={e=>{setSource(e.target.value);reset();}}><option value="stock">Только склад, без оценки продаваемости</option><option value="manual">Ручные лимиты на горизонт</option><option value="history">Достаточная история</option></Combobox></label>
-    <label>Сценарий<Combobox value={scenario} onChange={e=>{setScenario(e.target.value);reset();}}><option value="low">Низкий · 60%</option><option value="normal">Обычный · 100%</option><option value="high">Высокий · 140%</option></Combobox></label>
-    <label>Приготовление, минут на слот<Input type="number" min={0} max={120} value={prep} onChange={e=>{setPrep(+e.target.value);reset();}}/><small>0: всё сейчас. Иначе готовность в конце слота.</small></label>
-    <label>Порций кухни за слот<Input type="number" min={1} max={10000} value={capacity} onChange={e=>{setCapacity(+e.target.value);reset();}}/></label>
-    <label>Цель<Combobox value={objective} onChange={e=>{setObjective(e.target.value);reset();}}><option value="risk">Доли партий × срочность</option><option value="money">Стоимость × срочность</option></Combobox></label>
-    {objective==='money'&&<label>Валюта<Combobox value={currency} onChange={e=>{setCurrency(e.target.value);reset();}}>{['RUB','USD','EUR'].map(c=><option key={c} value={c}>{c}</option>)}</Combobox></label>}</div>
-    {source==='manual'&&<div className="form-grid">{s.dishes.filter(d=>!d.archived).map(d=><label key={d.id}>{d.name}: лимит порций<Input type="number" min={0} max={10000} value={limits[d.id]??0} onChange={e=>{setLimits({...limits,[d.id]:+e.target.value});reset();}}/></label>)}</div>}
+    <label>Горизонт<Combobox value={horizon} onChange={e=>{setHorizon(e.target.value);}}>{[6,12,24].map(h=><option key={h} value={h}>{h} часов</option>)}</Combobox></label>
+    <label>Конец смены ({s.settings.timezone})<Input type="datetime-local" value={shift} onChange={e=>{setShift(e.target.value);}}/><small>Необязательно; заменяет горизонт</small></label>
+    <label>Источник спроса<Combobox value={source} onChange={e=>{setSource(e.target.value);}}><option value="stock">Только склад, без оценки продаваемости</option><option value="manual">Ручные лимиты на горизонт</option><option value="history">Достаточная история</option></Combobox></label>
+    <label>Сценарий<Combobox value={scenario} onChange={e=>{setScenario(e.target.value);}}><option value="low">Низкий · 60%</option><option value="normal">Обычный · 100%</option><option value="high">Высокий · 140%</option></Combobox></label>
+    <label>Приготовление, минут на слот<Input type="number" min={0} max={120} value={prep} onChange={e=>{setPrep(+e.target.value);}}/><small>0: всё сейчас. Иначе готовность в конце слота.</small></label>
+    <label>Порций кухни за слот<Input type="number" min={1} max={10000} value={capacity} onChange={e=>{setCapacity(+e.target.value);}}/></label>
+    <label>Цель<Combobox value={objective} onChange={e=>{setObjective(e.target.value);}}><option value="risk">Доли партий × срочность</option><option value="money">Стоимость × срочность</option></Combobox></label>
+    {objective==='money'&&<label>Валюта<Combobox value={currency} onChange={e=>{setCurrency(e.target.value);}}>{['RUB','USD','EUR'].map(c=><option key={c} value={c}>{c}</option>)}</Combobox></label>}</div>
+    {source==='manual'&&<div className="form-grid">{s.dishes.filter(d=>!d.archived).map(d=><label key={d.id}>{d.name}: лимит порций<Input type="number" min={0} max={10000} value={limits[d.id]??0} onChange={e=>{setLimits({...limits,[d.id]:+e.target.value});}}/></label>)}</div>}
     <Button className="button primary" disabled={busy} onClick={run}>{busy?'Рассчитываем…':'Рассчитать совместный план'}</Button>{error&&<p role="alert" className="form-error">{error}</p>}</section>
     {!result&&<section className="panel planning-panel"><h2>Рейтинг блюд по одной порции</h2>{s.recommendations.map(r=><p key={r.dishId}>{r.dishName} · {number(r.score)} · до {r.availablePortions} порций отдельно</p>)}<p>Порции рейтинга нельзя складывать: блюда конкурируют за ингредиенты.</p></section>}
     {result&&<><section className="panel planning-panel"><h2>Совместный план продаж</h2><p>{result.demandBasis}</p><p>{result.provenOptimal?'Оптимум доказан полным перебором':'Допустимое приближение'} · {result.calculationMs} мс (базовый {result.baselineCalculationMs} мс) · {result.nodes} узлов. {result.stopReason}</p><p>Снимок {date(result.start)}, revision {result.revision}. Действует до {date(result.validUntil)}.</p>

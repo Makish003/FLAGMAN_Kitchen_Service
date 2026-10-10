@@ -11,8 +11,8 @@ $sdk=if(Test-Path "$root/.tools/dotnet/dotnet.exe"){ "$root/.tools/dotnet/dotnet
 & $sdk publish "$root/tools/Flagman.Maintenance/Flagman.Maintenance.csproj" -c Release --no-restore -o (Join-Path $target 'maintenance')
 if($LASTEXITCODE){throw 'Maintenance publish failed'}
 New-Item -ItemType Directory -Path (Join-Path $target 'docs')|Out-Null
-Copy-Item -LiteralPath "$root/docs/RUNBOOK.md","$root/docs/OPERATOR.md","$root/docs/DESIGN_APPLICATION.md","$root/docs/PRODUCT_TASKS.md","$root/docs/PRODUCT_VERIFICATION.md" -Destination (Join-Path $target 'docs')
-Copy-Item -LiteralPath "$root/docs/HACKATHON_TASKS.md","$root/docs/HACKATHON_VERIFICATION.md","$root/docs/HACKATHON_DECISIONS.md","$root/docs/DEMO.md" -Destination (Join-Path $target 'docs')
+Copy-Item -LiteralPath "$root/docs/RUNBOOK.md","$root/docs/OPERATOR.md","$root/docs/DESIGN_APPLICATION.md","$root/docs/PRODUCT_VERIFICATION.md" -Destination (Join-Path $target 'docs')
+Copy-Item -LiteralPath "$root/docs/HACKATHON_VERIFICATION.md","$root/docs/HACKATHON_DECISIONS.md","$root/docs/DEMO.md","$root/docs/ANIMATION_IMPLEMENTATION_PLAN.md","$root/docs/ANIMATION_VERIFICATION.md","$root/docs/PROJECT_AUDIT.md" -Destination (Join-Path $target 'docs')
 Copy-Item -LiteralPath "$root/README.md" -Destination $target
 New-Item -ItemType Directory -Path (Join-Path $target 'scripts')|Out-Null
 Copy-Item -LiteralPath "$root/scripts/backup.ps1","$root/scripts/restore.ps1" -Destination (Join-Path $target 'scripts')

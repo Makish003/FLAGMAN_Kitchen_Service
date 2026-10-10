@@ -56,8 +56,23 @@
   --size-modal: 46rem;
   --size-chart: 7.5rem;
   --size-focus: 0.125rem;
-  --motion-fast: 140ms;
+  --motion-fast: 170ms;
   --motion-spin: 1600ms;
+  --motion-micro: 170ms;
+  --motion-enter: 250ms;
+  --motion-exit: 175ms;
+  --motion-navigationEnter: 275ms;
+  --motion-navigationExit: 200ms;
+  --motion-toastEnter: 225ms;
+  --motion-listEnter: 175ms;
+  --motion-listExit: 140ms;
+  --motion-section: 200ms;
+  --motion-backdropEnter: 225ms;
+  --motion-small: 4px;
+  --motion-medium: 8px;
+  --motion-easeEnter: cubic-bezier(0.16, 1, 0.3, 1);
+  --motion-easeExit: cubic-bezier(0.4, 0, 1, 1);
+  --motion-easeStandard: cubic-bezier(0.2, 0, 0, 1);
   --shadow-floating: 0 0.5rem 2rem #102d2424;
   --shadow-dialog: 0 1.5rem 5rem #102d2440;
 }

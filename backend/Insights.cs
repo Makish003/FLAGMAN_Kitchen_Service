@@ -180,7 +180,7 @@ public static class Insights
     public static object Snapshot(State s, DateTimeOffset now, Dictionary<string,int>? totals = null)
     {
         var recommendations = Recommendations(s, now);
-        return new { now, revision = s.Revision, settings = s.Settings,
+        return new { now, demoOffsetHours = s.DemoOffsetHours, revision = s.Revision, settings = s.Settings,
             products = s.Products.Select(p => new { p.Id, p.Name, p.Unit, p.WarningHours, p.Archived,
                 physical = s.Batches.Where(b => b.ProductId == p.Id).Sum(b => b.RemainingQuantity),
                 usable = Inventory.Available(s, p.Id, now),

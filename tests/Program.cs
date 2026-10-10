@@ -96,6 +96,33 @@ Test("R22 deterministic generator sequence", () => {
     var movementCount=a.Movements.Count;for(var i=0;i<15;i++)Demo.Generate(a,42,i,now.AddHours(1));Assert(a.Movements.Count==movementCount,"Restart seed must not duplicate events");
 });
 var testDir=Path.Combine(Path.GetTempPath(),"flagman-tests-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(testDir);
+Test("Delivery preview accepts past receipts and exposes changed expiry without saving",()=>{
+    var store=new Store(Path.Combine(testDir,"delivery-preview.db"));store.Write(s=>{var f=Base();s.Products=f.Products;s.Dishes=f.Dishes;return 0;});
+    var persisted=JsonSerializer.Serialize(store.Read(s=>s),Store.Json);
+    var arrival=now.AddHours(-8);
+    JsonElement Preview(string date)=>JsonSerializer.SerializeToElement(PlanningService.PreviewDelivery(store.PlanningState(),now,new("preview",[new("t",1000,"g",ExpiryDate:date)],arrival)),Store.Json);
+    var first=Preview("2026-10-31");var second=Preview("2026-11-01");
+    Assert(first.GetProperty("arrival").GetDateTimeOffset()==arrival);
+    Assert(first.GetProperty("evaluatedAt").GetDateTimeOffset()==now);
+    Assert(first.GetProperty("batches")[0].GetProperty("expiresAt").GetDateTimeOffset()==DateTimeOffset.Parse("2026-10-31T21:00:00Z"));
+    Assert(second.GetProperty("batches")[0].GetProperty("expiresAt").GetDateTimeOffset()==DateTimeOffset.Parse("2026-11-01T21:00:00Z"));
+    Assert(first.GetProperty("changes")[0].GetProperty("after").GetInt32()==2);
+    Assert(JsonSerializer.Serialize(store.Read(s=>s),Store.Json)==persisted,"Preview must not write inventory");
+    var expired=JsonSerializer.SerializeToElement(PlanningService.PreviewDelivery(store.PlanningState(),now,new("expired",[new("t",500,"g",arrival.AddHours(1))],arrival)),Store.Json);
+    Assert(!expired.GetProperty("batches")[0].GetProperty("usable").GetBoolean());
+    Assert(expired.GetProperty("changes")[0].GetProperty("after").GetInt32()==0);
+    var future=now.AddDays(1);var planned=JsonSerializer.SerializeToElement(PlanningService.PreviewDelivery(store.PlanningState(),now,new("planned",[new("t",500,"g",ShelfLifeHours:48)],future)),Store.Json);
+    Assert(planned.GetProperty("evaluatedAt").GetDateTimeOffset()==future);
+    Throws(()=>PlanningService.PreviewDelivery(store.PlanningState(),now,new("too-far",[new("t",500,"g",ShelfLifeHours:48)],now.AddDays(31))));
+});
+Test("Demo clock offset is explicit and preserves inventory timestamps",()=>{
+    var s=Base();s.DemoOffsetHours=8;
+    var simulated=s.Now(now);Inventory.Deliver(s,new("demo-clock",[new("t",500,"g",simulated.AddDays(1))]),"demo-clock",simulated);
+    var snapshot=JsonSerializer.SerializeToElement(Insights.Snapshot(s,simulated),Store.Json);
+    Assert(snapshot.GetProperty("demoOffsetHours").GetDecimal()==8);
+    Assert(snapshot.GetProperty("now").GetDateTimeOffset()==now.AddHours(8));
+    Assert(snapshot.GetProperty("deliveries")[0].GetProperty("createdAt").GetDateTimeOffset()==simulated);
+});
 var hackathonEvidence=Environment.GetEnvironmentVariable("FLAGMAN_EVIDENCE")??Path.GetFullPath("test-results/hackathon-domain");Directory.CreateDirectory(hackathonEvidence);
 HackathonChecks.Run(Test,hackathonEvidence);
 var testSucceeded=false;

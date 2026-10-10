@@ -13,6 +13,7 @@ import { PlanningView } from './PlanningView';
 import { OffersView } from './OffersView';
 import type {OrderPreset,DeliveryPreset} from './types';
 import { DetailsDialog } from './DetailsDialog';
+import {usePresence} from './motion/usePresence';
 
 import { units, number, qty, shortId } from './format';
 const nav = [
@@ -30,17 +31,30 @@ function App() {
   const [orderPreset,setOrderPreset]=useState<OrderPreset>();const [deliveryPreset,setDeliveryPreset]=useState<DeliveryPreset>();
   const [detail,setDetail]=useState<{entity:string;id:string}|null>(null);
   const [modal, setModal] = useState<ModalKind>(null); const [editDish, setEditDish] = useState<Dish | undefined>();
+  const [modalVersion,setModalVersion]=useState(0);
   const [presetDish, setPresetDish] = useState<string | undefined>(); const [mobile, setMobile] = useState(false);
   const [toast, setToast] = useState<{text: string; error?: boolean} | null>(null); const [online, setOnline] = useState(false);
   const [loadError, setLoadError] = useState(''); const [search, setSearch] = useState(() => new URLSearchParams(location.search).get('q') ?? '');
   const [updatedAt,setUpdatedAt] = useState<number>(0); const [pending,setPending] = useState(!!pendingIntent());
+  const [realNow,setRealNow] = useState(()=>new Date().toISOString());
+  useEffect(()=>{const timer=setInterval(()=>setRealNow(new Date().toISOString()),1000);return()=>clearInterval(timer);},[]);
   const refreshBusy = useRef(false);
   const [wideNavigation,setWideNavigation] = useState(()=>matchMedia('(min-width: 64rem)').matches);
   useEffect(()=>{const query=matchMedia('(min-width: 64rem)');const update=()=>setWideNavigation(query.matches);query.addEventListener('change',update);return()=>query.removeEventListener('change',update);},[]);
   const sidebarRef = useRef<HTMLElement>(null);
   const workspaceRef = useRef<HTMLDivElement>(null);
+  const mobileMotion=usePresence(mobile&&!wideNavigation&&!!session,sidebarRef,undefined,wideNavigation);
+  const mobilePresent=mobileMotion.present&&!wideNavigation&&!!session;
+  const scrimRef=useRef<HTMLButtonElement>(null);
+  const scrimMotion=usePresence(mobile&&!wideNavigation&&!!session,scrimRef,undefined,wideNavigation);
+  const toastRef=useRef<HTMLDivElement>(null);
+  const toastMotion=usePresence(!!toast,toastRef);
+  const retainedToast=useRef(toast);if(toast)retainedToast.current=toast;
+  const visibleToast=toast??retainedToast.current;
+  useEffect(()=>{if(wideNavigation)setMobile(false);},[wideNavigation]);
+  useEffect(()=>{if(!session){setMobile(false);setModal(null);setDetail(null);}},[session]);
   useEffect(() => {
-    if (!mobile) return;
+    if (!mobilePresent) return;
     const previous = document.activeElement as HTMLElement;
     const workspace = workspaceRef.current;
     if (workspace) workspace.inert = true;
@@ -48,6 +62,7 @@ function App() {
     document.body.style.overflow = 'hidden';
     sidebarRef.current?.querySelector<HTMLButtonElement>('.nav-close')?.focus();
     const keyboard = (event: KeyboardEvent) => {
+      if (document.querySelector('dialog[open]')) return;
       if (event.key === 'Escape') { event.preventDefault(); setMobile(false); }
       if (event.key !== 'Tab') return;
       const elements = [...(sidebarRef.current?.querySelectorAll<HTMLElement>('button,a[href]') ?? [])].filter(el => el.getClientRects().length > 0);
@@ -58,8 +73,16 @@ function App() {
     const wide = matchMedia('(min-width: 64rem)');
     const resize = () => { if (wide.matches) setMobile(false); };
     document.addEventListener('keydown', keyboard); wide.addEventListener('change', resize);
-    return () => { if (workspace) workspace.inert = false; document.body.style.overflow = oldOverflow; document.removeEventListener('keydown', keyboard); wide.removeEventListener('change', resize); previous?.focus(); };
-  }, [mobile]);
+    return () => {
+      if (workspace) workspace.inert = false;
+      document.body.style.overflow = oldOverflow;
+      document.removeEventListener('keydown', keyboard); wide.removeEventListener('change', resize);
+      if(!document.querySelector('dialog[open]')) {
+        const target=previous?.isConnected&&!previous.closest('[inert]')&&previous.getClientRects().length?previous:document.querySelector<HTMLElement>('.mobile-menu');
+        target?.focus();
+      }
+    };
+  }, [mobilePresent]);
   useEffect(() => { document.title = `${nav.find(n => n.id === page)?.label ?? 'Обзор кухни'} · Флагман`; }, [page]);
   const notify = useCallback((text: string, error = false) => setToast({text, error}), []);
   const refresh = useCallback(async () => {
@@ -79,7 +102,7 @@ function App() {
     return () => { stream.close(); clearInterval(timer); clearTimeout(debounce); setOnline(false); };
   }, [session, refresh]);
   useEffect(() => { if (!toast) return; const timer = setTimeout(() => setToast(null), 6500); return () => clearTimeout(timer); }, [toast]);
-  const open = (kind: ModalKind, dish?: Dish, preset?: string) => { setOrderPreset(undefined);setDeliveryPreset(undefined);setMobile(false); setEditDish(dish); setPresetDish(preset); setModal(kind); };
+  const open = (kind: ModalKind, dish?: Dish, preset?: string) => { setModalVersion(v=>v+1);setOrderPreset(undefined);setDeliveryPreset(undefined);setMobile(false); setEditDish(dish); setPresetDish(preset); setModal(kind); };
   const navigate = (id: string) => { history.pushState({},'', '/'+id); setPage(id); setSearch(''); setMobile(false); };
   useEffect(()=>{const back=()=>{setPage(nav.some(n=>n.id===location.pathname.slice(1))?location.pathname.slice(1):'overview');setSearch(new URLSearchParams(location.search).get('q')??'');};window.addEventListener('popstate',back);return()=>window.removeEventListener('popstate',back);},[]);
   useEffect(()=>{const u=new URL(location.href);if(search)u.searchParams.set('q',search);else u.searchParams.delete('q');history.replaceState({},'',u);},[search]);
@@ -98,8 +121,8 @@ function App() {
   const change = async (fn: () => Promise<unknown>, message: string) => { try { await fn(); await refresh(); notify(message); } catch (e) { notify((e as Error).message, true); } };
   const current = nav.find(n => n.id === page)!;
   return <div className="app-shell"><a className="skip-link" href="#main-content">Перейти к содержимому</a>
-    {mobile && <Button className="nav-scrim" aria-label="Закрыть навигацию" onClick={() => setMobile(false)}/>}
-    <aside inert={!wideNavigation&&!mobile} aria-hidden={!wideNavigation&&!mobile?true:undefined} ref={sidebarRef} id="main-navigation" className={`sidebar ${mobile ? 'open' : ''}`} role={mobile?'dialog':undefined} aria-modal={mobile?true:undefined} aria-label="Навигация кухни"><Button className="icon-button nav-close" aria-label="Закрыть навигацию" onClick={()=>setMobile(false)}><X size={18}/></Button>
+    {mobilePresent && <Button ref={scrimRef} data-phase={scrimMotion.phase} className="nav-scrim" aria-label="Закрыть навигацию" onClick={() => setMobile(false)}/>}
+    <aside inert={!wideNavigation&&!mobilePresent} aria-hidden={!wideNavigation&&!mobilePresent?true:undefined} ref={sidebarRef} data-phase={wideNavigation?undefined:mobileMotion.phase} id="main-navigation" className={`sidebar ${mobile ? 'open' : ''}`} role={mobilePresent?'dialog':undefined} aria-modal={mobilePresent?true:undefined} aria-label="Навигация кухни"><Button className="icon-button nav-close" aria-label="Закрыть навигацию" onClick={()=>setMobile(false)}><X size={18}/></Button>
       <a className="brand" href="/overview" onClick={e => {e.preventDefault(); navigate('overview');}}><span className="brand-mark"><Leaf size={24}/></span><span>флагман<small>КОНТРОЛЬ КУХНИ</small></span></a>
       <div className="restaurant"><span className="restaurant-icon"><UtensilsCrossed size={18}/></span><div>Ресторан «Флагман»<small>Операционный кабинет</small></div><span className="dot"/></div>
       <nav aria-label="Основная навигация">{[
@@ -111,12 +134,12 @@ function App() {
     </aside>
     <div className="workspace" ref={workspaceRef}>
       <header className="topbar"><div><Button className="icon-button mobile-menu" aria-label="Открыть навигацию" aria-expanded={mobile} aria-controls="main-navigation" onClick={() => setMobile(true)}><Menu/></Button><span className="breadcrumb">Рабочее пространство <ChevronRight size={14}/> <strong>{current.label}</strong></span></div><div className="topbar-right"><span className={`live ${online ? '' : 'offline'}`}><span/>{online ? 'В реальном времени' : 'Переподключение…'}</span><Button className="icon-button" aria-label="Истекающие партии" onClick={() => navigate('expiry')}><Bell size={19}/>{expiring.length > 0 && <i/>}</Button><Button className="icon-button" aria-label="Выйти" onClick={() => change(async () => {await api('/logout', 'POST'); clearPending(); setPending(false); setSession(null); setSnapshot(null);}, 'Вы вышли из системы')}><LogOut size={18}/></Button></div></header>
-      <main id="main-content" tabIndex={-1}>
+      <main id="main-content" tabIndex={-1}><div key={page} className="section-motion">
         <div className="page-heading"><div><p className="eyebrow">{page === 'overview' ? 'ВСЁ ДЛЯ СПОКОЙНОЙ СМЕНЫ' : 'ОПЕРАЦИОННЫЙ КОНТРОЛЬ'}</p><h1>{page === 'overview' ? 'Обзор кухни' : current.label}</h1><p className="page-description">{page === 'overview' ? 'Что происходит на кухне и чем заняться в первую очередь.' : descriptions[page]}</p></div><div className="heading-actions"><Button className="button secondary" disabled={pending} onClick={() => open('delivery')}><PackagePlus size={17}/>Принять поставку</Button><Button className="button primary" disabled={pending} onClick={() => open('order')}><Plus size={18}/>Новый заказ</Button></div></div>
         {loadError && <div className="notice danger" role="alert">{loadError}<Button onClick={refresh}>Повторить</Button></div>}
         {pending && <div className="notice danger" role="alert"><div><strong>Есть незавершённая операция</strong><p>Восстановите результат перед новым заказом или поставкой. Исходный состав сохранён.</p></div><Button className="button secondary" onClick={()=>change(async()=>{const r=await recoverPending();setPending(false);notify(r?.status==='rejected'?'Прежний заказ отклонён; причины в журнале.':'Прежняя операция восстановлена.');},'Результат операции проверен')}>Восстановить результат</Button></div>}
         {!snapshot ? <div className="skeleton"><Activity className="spin"/> Загружаем состояние склада…</div> : <>
-          <div className="date-line"><Clock3 size={14}/><span>{date(snapshot.now, true)} · {snapshot.settings.timezone}</span>{session.demo && <Badge status="neutral">Демо-режим</Badge>}<span className="revision">{loadError || !online ? 'Данные могут быть устаревшими · ' : ''}Проверено {updatedAt ? new Date(updatedAt).toLocaleTimeString('ru-RU') : ':'} · #{snapshot.revision}</span></div>
+          <div className="date-line"><Clock3 size={14}/><span data-testid="current-time">{date(realNow, true)} · {snapshot.settings.timezone}</span>{session.demo && <Badge status="neutral">Демо-режим</Badge>}{session.demo && <span data-testid="demo-time">Время демо: {date(snapshot.now, true)}{snapshot.demoOffsetHours ? ` (+${number(snapshot.demoOffsetHours)} ч)` : ''}</span>}<span className="revision">{loadError || !online ? 'Данные могут быть устаревшими · ' : ''}Проверено {updatedAt ? new Date(updatedAt).toLocaleTimeString('ru-RU',{timeZone:snapshot.settings.timezone}) : ':'} · #{snapshot.revision}</span></div>
           {page==='overview' && (snapshot.products.length===0 || activeDishes.length===0 || snapshot.totals.deliveries===0) && <section className="panel onboarding" aria-labelledby="setup-title"><p className="eyebrow">ПЕРВЫЙ ЗАПУСК</p><h2 id="setup-title">Подготовьте кухню к первому заказу</h2><p>Три коротких шага. Базовые настройки уже готовы к работе.</p><ol className="setup-steps">{[
             {done:snapshot.products.length>0,title:'Добавьте продукты',text:'Название и единица измерения'},
             {done:activeDishes.length>0,title:'Составьте меню',text:'Блюдо и ингредиенты на порцию'},
@@ -132,7 +155,7 @@ function App() {
           </>}
           {page === 'stock' && <StockView s={snapshot} search={search} setSearch={setSearch} productName={productName} productUnit={productUnit} date={date} remaining={remaining} open={open}/>}
           {page === 'deliveries' && <section className="panel"><PanelTitle title="Журнал поставок" subtitle="Каждая поставка сохраняет отдельные партии и сроки"/><History<Delivery> entity="deliveries" revision={snapshot.revision} initial={snapshot.deliveries} total={snapshot.totals.deliveries} render={rows => <div className="table-wrap"><Table><thead><tr><th>Номер</th><th>ID</th><th>Создана</th><th>Поступила</th><th>Партий</th><th/></tr></thead><tbody>{rows.map(d => <tr key={d.id}><td><Button className="text-button" onClick={()=>setDetail({entity:'deliveries',id:d.id})}>{d.number}</Button></td><td className="mono">#{shortId(d.id)}</td><td>{date(d.createdAt)}</td><td>{date(d.receivedAt)}</td><td>{d.batchIds.length}</td><td><Button className="text-button" onClick={() => {navigate('stock'); setSearch(d.id);}}>Посмотреть партии <ArrowRight size={14}/></Button></td></tr>)}</tbody></Table></div>}/></section>}
-          {page === 'menu' && <><Toolbar search={search} setSearch={setSearch} placeholder="Найти блюдо…"><Button className="button secondary" onClick={() => open('dish')}><Plus size={17}/>Добавить блюдо</Button></Toolbar><div className="dish-grid">{snapshot.dishes.filter(d => !d.archived && filtered(d.name)).map(d => <article className="panel dish-card" key={d.id}><div className="dish-card-top"><span className="dish-glyph"><UtensilsCrossed/></span><Badge status={d.portions > 0 ? 'green' : 'red'}>{d.portions > 0 ? `${d.portions} порций` : 'Стоп-лист'}</Badge></div><small className="eyebrow">{d.category}</small><h2>{d.name}</h2><ul className="recipe">{d.ingredients.map(i => <li key={i.productId}><span>{productName(i.productId)}</span><strong>{qty(i.quantity, productUnit(i.productId))}</strong></li>)}</ul>{d.shortages.length > 0 && <p className="error-text">Не хватает: {d.shortages.map(x => x.productName).join(', ')}</p>}<div className="dish-card-actions"><Button className="text-button" onClick={()=>open('dish',{...d,id:crypto.randomUUID(),name:d.name+' · новая версия'})}>Новая версия</Button><Button className="text-button destructive" onClick={()=>{if(confirm('Архивировать блюдо? История сохранится.'))change(()=>api('/archive/dishes/'+d.id,'POST'),'Блюдо архивировано');}}>Архивировать</Button><Button className="text-button" onClick={() => open('dish', d)}>Рецептура <Settings2 size={14}/></Button><Button className="button small primary" disabled={!d.portions || pending} onClick={() => open('order', undefined, d.id)}>В заказ <Plus size={15}/></Button></div></article>)}</div>{activeDishes.length === 0 && <Empty text="Добавьте первое блюдо и его ингредиенты"/>}</>}
+          {page === 'menu' && <><Toolbar search={search} setSearch={setSearch} placeholder="Найти блюдо…"><Button className="button secondary" onClick={() => open('dish')}><Plus size={17}/>Добавить блюдо</Button></Toolbar><div className="dish-grid">{snapshot.dishes.filter(d => !d.archived && filtered(d.name)).map(d => <article className="panel dish-card" key={d.id}><div className="dish-card-top"><span className="dish-glyph"><UtensilsCrossed/></span><Badge status={d.portions > 0 ? 'green' : 'red'}>{d.portions > 0 ? `${d.portions} порций` : 'Стоп-лист'}</Badge></div><small className="eyebrow">{d.category}</small><h2>{d.name}</h2><ul className="recipe">{d.ingredients.map(i => <li key={i.productId}><span>{productName(i.productId)}</span><strong>{qty(i.quantity, productUnit(i.productId))}</strong></li>)}</ul>{d.shortages.length > 0 && <p className="error-text">Не хватает: {d.shortages.map(x => x.productName).join(', ')}</p>}<div className="dish-card-actions"><Button className="text-button" onClick={()=>open('dish',{...d,id:crypto.randomUUID(),name:d.name+' · новая версия'})}>Новая версия</Button><Button className="text-button destructive" onClick={()=>{if(confirm('Архивировать блюдо? История сохранится.'))change(()=>api('/archive/dishes/'+encodeURIComponent(d.id),'POST'),'Блюдо архивировано');}}>Архивировать</Button><Button className="text-button" onClick={() => open('dish', d)}>Рецептура <Settings2 size={14}/></Button><Button className="button small primary" disabled={!d.portions || pending} onClick={() => open('order', undefined, d.id)}>В заказ <Plus size={15}/></Button></div></article>)}</div>{activeDishes.length === 0 && <Empty text="Добавьте первое блюдо и его ингредиенты"/>}</>}
           {page === 'orders' && <section className="panel"><PanelTitle title="Журнал заказов" subtitle="Принятые и отклонённые заказы с причинами"/><History<Order> entity="orders" revision={snapshot.revision} initial={snapshot.orders} total={snapshot.totals.orders} render={rows => <div className="table-wrap"><Table><thead><tr><th>Заказ</th><th>Блюда</th><th>Дата</th><th>Статус</th><th>Причины отказа</th></tr></thead><tbody>{rows.map(o => <tr key={o.id}><td><Button className="text-button" onClick={()=>setDetail({entity:'orders',id:o.id})}>#{shortId(o.id)}</Button></td><td>{o.items.map((i,j) => <div key={j}>{dishName(i.dishId)} <strong>× {i.portions}</strong></div>)}</td><td>{date(o.createdAt)}</td><td><Badge status={o.status === 'accepted' ? 'green' : 'red'}>{o.status === 'accepted' ? 'Принят' : 'Отклонён'}</Badge></td><td>{o.shortages.map(x => <small key={x.productId}>{x.productName}: не хватает {qty(x.missing, x.unit)}</small>)}{o.shortages.length === 0 && <span className="muted">Все ингредиенты списаны</span>}</td></tr>)}</tbody></Table></div>}/></section>}
           {page === 'stop' && <><div className="notice danger"><CircleAlert size={22}/><div><strong>{stop.length ? `${stop.length} блюд временно недоступны` : 'Все блюда доступны'}</strong><p>Проверка на одну порцию. После поставки доступность обновится автоматически.</p></div></div><div className="dish-grid">{stop.map(d => <section className="panel stop-card" key={d.id}><Badge status="red">В стоп-листе</Badge><h2>{d.name}</h2>{d.shortages.map(x => <div className="shortage-detail" key={x.productId}><strong>{x.productName}</strong><span>Нужно {qty(x.requested, x.unit)} · доступно {qty(x.available, x.unit)}</span><b>Дефицит {qty(x.missing, x.unit)}</b></div>)}<Button className="button secondary" disabled={pending} onClick={() => open('delivery')}><PackagePlus size={17}/>Пополнить склад</Button><Button className="text-button" onClick={()=>navigate('procurement')}>План закупок</Button></section>)}</div></>}
           {page === 'offers' && <OffersView s={snapshot} date={date} onDetail={id=>setDetail({entity:'batches',id})} onOrder={items=>{open('order');setOrderPreset(items);}}/>}
@@ -143,11 +166,11 @@ function App() {
           {page === 'generator' && session.demo && <GeneratorView s={snapshot} refresh={refresh} notify={notify}/>}
           <footer className="page-footer"><span><Leaf size={14}/> Флагман · каждый продукт имеет значение</span><span>Единый склад · точные остатки · контроль сроков</span></footer>
         </>}
-      </main>
+      </div></main>
     </div>
-    {toast && <div className={`toast ${toast.error ? 'error' : ''}`} role="status">{toast.error ? <CircleAlert size={19}/> : <Check size={19}/>}<span>{toast.text}</span><Button className="icon-button" aria-label="Закрыть сообщение" onClick={() => setToast(null)}><X size={16}/></Button></div>}
-    {detail&&<DetailsDialog s={snapshot!} entity={detail.entity} id={detail.id} onClose={()=>setDetail(null)}/>}
-    {modal && snapshot && <OperationModal kind={modal} s={snapshot} editDish={editDish} presetDish={presetDish} orderPreset={orderPreset} deliveryPreset={deliveryPreset} onClose={() => {setModal(null);setPending(!!pendingIntent());}} onDone={async text => {setModal(null); await refresh(); notify(text);}}/>}
+    {toastMotion.present && visibleToast && <div className="toast-position"><div ref={toastRef} data-phase={toastMotion.phase} className={`toast ${visibleToast.error ? 'error' : ''}`} role="status">{visibleToast.error ? <CircleAlert size={19}/> : <Check size={19}/>}<span>{visibleToast.text}</span><Button disabled={!toast} className="icon-button" aria-label="Закрыть сообщение" onClick={() => setToast(null)}><X size={16}/></Button></div></div>}
+    {detail&&<DetailsDialog key={`${detail.entity}:${detail.id}`} s={snapshot!} entity={detail.entity} id={detail.id} onClose={()=>setDetail(null)}/>}
+    {modal && snapshot && <OperationModal key={modalVersion} kind={modal} s={snapshot} editDish={editDish} presetDish={presetDish} orderPreset={orderPreset} deliveryPreset={deliveryPreset} onClose={() => {setModal(null);setPending(!!pendingIntent());}} onDone={text => {notify(text);void refresh();}}/>}
   </div>;
 }
 const descriptions: Record<string,string> = { stock: 'Остатки по продуктам и партиям. Сроки, которым нужно внимание.', deliveries: 'Принимайте продукты и сохраняйте происхождение каждой партии.', menu: 'Состав блюд и доступные порции по актуальному складу.', orders: 'Все блюда одного заказа проверяются и списываются вместе.', stop: 'Причины недоступности и ингредиенты для пополнения.', offers: 'Помогайте кухне использовать свежие продукты вовремя.', analytics: 'Потери, дефицит, закупки и ожидаемая доступность меню.', expiry: 'Проверьте сроки и используйте продукты вовремя.', procurement: 'Что заказать для следующей смены.', forecast: 'Какие блюда могут стать недоступными и когда.', generator: 'Воспроизводимый поток событий и управляемое время.' };
