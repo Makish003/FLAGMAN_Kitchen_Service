@@ -23,6 +23,21 @@ void Invariants(State s)
 {
     foreach (var b in s.Batches) { Assert(b.RemainingQuantity >= 0); Assert(b.RemainingQuantity == s.Movements.Where(m => m.BatchId == b.Id).Sum(m => m.Quantity), "Movement reconciliation"); }
 }
+Test("H03 archived recipe cannot allocate virtual stock", () => {
+    var s = Base(); Delivery(s,1000,now.AddHours(8));
+    s.Dishes[0] = s.Dishes[0] with { Archived=true };
+    var plan=Insights.Recommendations(s,now);
+    Assert(plan.Ranking.All(x=>x.DishId!="a"));
+    Assert(plan.Plan.All(x=>x.DishId!="a"),"Archived dish took virtual stock");
+    Assert(plan.Plan.Single().DishId=="b" && plan.Plan.Single().Portions==2);
+    Assert(s.Batches[0].RemainingQuantity==1000); Invariants(s);
+});
+Test("H05 expiry between offer and confirmation rejects without partial consumption", () => {
+    var s=Base();Delivery(s,500,now.AddMinutes(1));
+    Assert(Insights.Recommendations(s,now).Plan.Count>0);
+    var order=Inventory.PlaceOrder(s,new([new("a",1)]),"expired-offer",now.AddMinutes(1));
+    Assert(order.Status=="rejected"&&s.Movements.Count==1);Invariants(s);
+});
 Test("R01–R05 R10 FEFO 2kg + 3kg / 2.5kg", () => {
     var s = Base(); Delivery(s, 2000, now.AddDays(1)); Delivery(s, 3000, now.AddDays(7), "d2");
     var o = Inventory.PlaceOrder(s, new([new("a", 5)]), "o1", now); Assert(o.Status == "accepted");
@@ -81,10 +96,24 @@ Test("R22 deterministic generator sequence", () => {
     var movementCount=a.Movements.Count;for(var i=0;i<15;i++)Demo.Generate(a,42,i,now.AddHours(1));Assert(a.Movements.Count==movementCount,"Restart seed must not duplicate events");
 });
 var testDir=Path.Combine(Path.GetTempPath(),"flagman-tests-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(testDir);
+var hackathonEvidence=Environment.GetEnvironmentVariable("FLAGMAN_EVIDENCE")??Path.GetFullPath("test-results/hackathon-domain");Directory.CreateDirectory(hackathonEvidence);
+HackathonChecks.Run(Test,hackathonEvidence);
+var testSucceeded=false;
 try {
+    Test("H13 dashboard prices resolve expired batches beyond UI page limit",()=>{
+        var store=new Store(Path.Combine(testDir,"historical-prices.db"));var real=DateTimeOffset.UtcNow;
+        store.Write(s=>{var f=Base();s.Products=f.Products;s.Dishes=f.Dishes;for(var i=0;i<600;i++)Inventory.Deliver(s,new("priced-history-"+i,[new("t",100,"g",real.AddHours(1),UnitCost:1,Currency:"RUB")]),"priced-"+i,real);Inventory.Expire(s,real.AddHours(1));s.DemoOffsetHours=2;return 0;});
+        var dashboard=JsonSerializer.SerializeToElement(store.Dashboard(),Store.Json);Assert(dashboard.GetProperty("batches").GetArrayLength()==500);Assert(dashboard.GetProperty("analytics").GetProperty("costs")[0].GetProperty("wasted").GetDecimal()==60000);store.VerifyIntegrity();
+    });
+    Test("H12 v2 to v3 backup, unknown old prices and restored journals",()=>{
+        var path=Path.Combine(testDir,"prices-v2.db");new Store(path).Write(s=>{var f=Base();s.Products=f.Products;s.Dishes=f.Dishes;Delivery(s,1000,now.AddDays(1));return 0;});
+        using(var db=new Microsoft.Data.Sqlite.SqliteConnection("Data Source="+path)){db.Open();using var cmd=db.CreateCommand();cmd.CommandText="DELETE FROM schema_migrations WHERE version=3; UPDATE batches SET payload=json_remove(payload,'$.unitCost','$.currency');";cmd.ExecuteNonQuery();}
+        var migrated=new Store(path);CheckPrices(migrated);var copy=Directory.GetFiles(testDir,"prices-v2.db.pre-v3-*.db").Single();CheckPrices(new Store(copy));
+        void CheckPrices(Store store){store.VerifyIntegrity();store.Read(s=>{Assert(s.Batches.Single().UnitCost is null && s.Batches.Single().RemainingQuantity==1000 && s.Movements.Count==1);return 0;});}
+    });
     Test("P13 v1 backup migration and unsupported schema refusal",()=>{
         var path=Path.Combine(testDir,"migration.db");new Store(path).Write(s=>{var f=Base();s.Products=f.Products;s.Dishes=f.Dishes;Delivery(s,500,now.AddDays(1));return 0;});
-        using(var db=new Microsoft.Data.Sqlite.SqliteConnection("Data Source="+path)){db.Open();using var cmd=db.CreateCommand();cmd.CommandText="DELETE FROM schema_migrations WHERE version=2; DROP TABLE audit;";cmd.ExecuteNonQuery();}
+        using(var db=new Microsoft.Data.Sqlite.SqliteConnection("Data Source="+path)){db.Open();using var cmd=db.CreateCommand();cmd.CommandText="DELETE FROM schema_migrations WHERE version>=2; DROP TABLE audit;";cmd.ExecuteNonQuery();}
         new Store(path).VerifyIntegrity();Assert(Directory.GetFiles(testDir,"migration.db.pre-v2-*.db").Length==1);
         using(var db=new Microsoft.Data.Sqlite.SqliteConnection("Data Source="+path)){db.Open();using var cmd=db.CreateCommand();cmd.CommandText="INSERT INTO schema_migrations VALUES(99)";cmd.ExecuteNonQuery();}
         var refused=false;try{new Store(path);}catch(InvalidOperationException){refused=true;}Assert(refused);
@@ -139,5 +168,6 @@ try {
         var path=Path.Combine(testDir,"load.db");var store=new Store(path);store.Write(s=>{var fixture=Base();s.Products=fixture.Products;s.Dishes=fixture.Dishes;for(var i=0;i<1000;i++)Delivery(s,500,now.AddDays(7),"d-"+i);return 0;});
         var watch=Stopwatch.StartNew();for(var i=0;i<5;i++)store.Read(s=>Insights.Snapshot(s,now));watch.Stop();Console.WriteLine($"METRIC snapshot 1000 batches average {watch.ElapsedMilliseconds/5}ms (target <2000ms)");Assert(watch.ElapsedMilliseconds/5<2000);
     });
-} finally { Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();Directory.Delete(testDir,true); }
+    testSucceeded=true;
+} finally { Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();if(testSucceeded)Directory.Delete(testDir,true);else Console.WriteLine("Failed domain databases retained: "+testDir); }
 Console.WriteLine($"{passed} critical domain / real database checks passed.");

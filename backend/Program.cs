@@ -29,7 +29,7 @@ builder.Services.Configure<ForwardedHeadersOptions>(o => {
 var storeInstance = new Store(dbPath);
 if (!demo && storeInstance.Metadata().DemoOffsetHours != 0) throw new InvalidOperationException("Demo clock detected. Use a separate, new production database; never reset existing inventory time.");
 var sessionVersion = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(password + ":" + (Environment.GetEnvironmentVariable("FLAGMAN_SESSION_VERSION") ?? "1"))));
-builder.Services.AddSingleton(storeInstance); builder.Services.AddSingleton<Generator>(); builder.Services.AddHostedService<Flagman.Monitor>();
+builder.Services.AddSingleton(storeInstance); builder.Services.AddSingleton<PlanningService>(); builder.Services.AddSingleton<Generator>(); builder.Services.AddHostedService<Flagman.Monitor>();
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme).AddCookie(o => {
     o.Cookie.Name = "flagman.session"; o.Cookie.HttpOnly = true; o.Cookie.SameSite = SameSiteMode.Strict;
     o.Cookie.SecurePolicy = builder.Environment.IsDevelopment() ? CookieSecurePolicy.SameAsRequest : CookieSecurePolicy.Always;
@@ -60,7 +60,7 @@ app.Use(async (ctx, next) => {
         if (ctx.Request.Headers["X-Requested-With"] != "Flagman" || (origin.Length > 0 && origin != $"{ctx.Request.Scheme}://{ctx.Request.Host}"))
         { ctx.Response.StatusCode = 403; await ctx.Response.WriteAsJsonAsync(new { error = "Запрос записи должен поступить из интерфейса или доверенного API-клиента" }); return; }
     }
-    using var writerLease = ctx.Request.Path.StartsWithSegments("/api") && ctx.Request.Method is not ("GET" or "HEAD" or "OPTIONS") ? await storeInstance.AcquireWriter(ctx.RequestAborted) : null;
+    using var writerLease = ctx.Request.Path.StartsWithSegments("/api") && ctx.Request.Method is not ("GET" or "HEAD" or "OPTIONS") && ctx.Request.Path != "/api/planning" && ctx.Request.Path != "/api/scenario" && ctx.Request.Path != "/api/orders/preview" && ctx.Request.Path != "/api/deliveries/preview" ? await storeInstance.AcquireWriter(ctx.RequestAborted) : null;
     try { await next(); }
     catch (DomainException ex) { ctx.Response.StatusCode = ex.Status; await ctx.Response.WriteAsJsonAsync(new { error = ex.Message }); }
     catch (BadHttpRequestException) { ctx.Response.StatusCode = 400; await ctx.Response.WriteAsJsonAsync(new { error = "Некорректное тело запроса" }); }
@@ -85,7 +85,7 @@ api.MapGet("/session", (HttpContext ctx) => new { name = ctx.User.Identity!.Name
 api.MapGet("/ops/status", () => {
     var directory=Environment.GetEnvironmentVariable("FLAGMAN_BACKUP_DIR")??Path.Combine(Path.GetDirectoryName(Path.GetFullPath(dbPath))!,"backups");
     DateTime? backup=Directory.Exists(directory)?Directory.GetFiles(directory,"*.db").Select(File.GetLastWriteTimeUtc).OrderDescending().Select(x=>(DateTime?)x).FirstOrDefault():null;
-    return new { monitorLastSuccess = Telemetry.MonitorSuccess, monitorError = Telemetry.MonitorError, sseClients = Interlocked.Read(ref Telemetry.SseClients), lastExpiryLagMs=Telemetry.LastExpiryLagMs, backupAgeHours=backup.HasValue?(double?)(DateTime.UtcNow-backup.Value).TotalHours:null };
+    return new { monitorLastSuccess = Telemetry.MonitorSuccess, monitorError = Telemetry.MonitorError, sseClients = Interlocked.Read(ref Telemetry.SseClients), lastExpiryLagMs=Telemetry.LastExpiryLagMs, backupAgeHours=backup.HasValue?(double?)(DateTime.UtcNow-backup.Value).TotalHours:null,databaseTimings=Telemetry.TimingSnapshot() };
 });
 api.AddEndpointFilter(async (context,next) => {
     foreach (var argument in context.Arguments) {
@@ -97,6 +97,10 @@ api.AddEndpointFilter(async (context,next) => {
 api.MapGet("/operations/{scope}/{key}", (string scope, string key, Store store) => { Inventory.Require(scope is "order" or "delivery", "Неизвестная операция", 404); var result = store.Operation(scope, key); return result is null ? Results.NotFound(new { error = "Результат пока не найден. Можно повторить исходный запрос с прежним ключом." }) : Results.Content(result, "application/json"); });
 api.MapPost("/logout", async (HttpContext ctx,Store store) => { store.WriteOperation("audit","",s=>{s.Audit.Add(new(Inventory.Id(),"session.logout",ctx.User.FindFirst("sessionId")!.Value,DateTimeOffset.UtcNow,"restaurant"));return 0;});await ctx.SignOutAsync(); return Results.Ok(); });
 api.MapGet("/snapshot", (Store store) => store.Dashboard());
+api.MapPost("/planning", (PlanningInput input,Store store,PlanningService planner)=>{var s=store.PlanningState();return planner.Calculate(s,s.Now(DateTimeOffset.UtcNow),input);});
+api.MapPost("/scenario", (ScenarioInput input,Store store)=>{var s=store.PlanningState();return ScenarioDemand.Calculate(s,s.Now(DateTimeOffset.UtcNow),input);});
+api.MapPost("/orders/preview", (OrderInput input,Store store)=>{var s=store.PlanningState();return PlanningService.PreviewOrder(s,s.Now(DateTimeOffset.UtcNow),input);});
+api.MapPost("/deliveries/preview", (DeliveryInput input,Store store)=>{var s=store.PlanningState();return PlanningService.PreviewDelivery(s,s.Now(DateTimeOffset.UtcNow),input);});
 api.MapPost("/products", (Product input, Store store) => store.WriteOperation("product", input.Id, s => Inventory.AddProduct(s, input, s.Now(DateTimeOffset.UtcNow))));
 api.MapPost("/dishes", (Dish input, HttpContext ctx, Store store) => store.WriteOperation("dish", input.Id, s => { var result=Inventory.SaveDish(s,input,s.Now(DateTimeOffset.UtcNow)); s.Audit.Add(new(Inventory.Id(),"recipe.saved",ctx.User.FindFirst("sessionId")!.Value,DateTimeOffset.UtcNow,input.Id));return result; }));
 api.MapPost("/deliveries", (DeliveryInput input, HttpContext ctx, Store store) => store.WriteOperation("delivery", ctx.Request.Headers["Idempotency-Key"].ToString(), s => Inventory.Deliver(s, input, ctx.Request.Headers["Idempotency-Key"].ToString(), s.Now(DateTimeOffset.UtcNow)), input.Id));

@@ -359,3 +359,10 @@ input[aria-invalid='true'] { border-color: var(--semantic-status-danger); }
 .topbar > div:first-child,.breadcrumb { min-width: 0; }
 .breadcrumb strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .topbar-right { flex-shrink: 0; }
+.planning-panel { padding: var(--space-5); }
+.planning-panel > h2 { margin-bottom: var(--space-3); }
+.planning-panel > p { margin-bottom: var(--space-4); }
+.planning-panel > .button { margin: var(--space-2) var(--space-2) var(--space-2) 0; }
+.planning-panel input[type=number] { min-width: 0; width: 100%; }
+.planning-panel td label { min-width: calc(var(--space-12) * 2); }
+.advanced-fields input[type=checkbox] { width: auto; min-height: var(--space-6); margin-right: var(--space-2); }

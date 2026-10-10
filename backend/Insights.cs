@@ -38,19 +38,32 @@ public static class Insights
         var ranking = s.Dishes.Where(d=>!d.Archived).Select(d => Rate(s, d, now)).Where(x => x.Score > 0).OrderByDescending(x => x.Score).ThenBy(x => x.DishId).ToList();
         var virtualStock = Clone(s); var plan = new List<SalePlan>();
         // Re-score after every dish to account for ingredient competition.
-        var candidates = s.Dishes.ToList();
+        var candidates = s.Dishes.Where(d => !d.Archived).ToList();
         while (candidates.Count > 0)
         {
             var best = candidates.Select(d => Rate(virtualStock, d, now)).Where(x => x.Score > 0).OrderByDescending(x => x.Score).ThenBy(x => x.DishId).FirstOrDefault();
             if (best is null) break;
             var dish = candidates.Find(d => d.Id == best.DishId)!; candidates.Remove(dish);
             var portions = 0; var reasons = new Dictionary<string, RecommendationReason>();
-            while (portions < 100)
+            // Compute a whole dish allocation once, rather than sorting FEFO stock per portion.
+            var usefulLimit=dish.Ingredients.Select(i=>{
+                var p=Inventory.Product(s,i.ProductId);
+                var risky=Inventory.Usable(virtualStock,i.ProductId,now).Where(b=>b.ExpiresAt<=now.AddHours((double)Math.Min(p.WarningHours,s.Settings.WarningHours))).Sum(b=>b.RemainingQuantity);
+                return (int)Math.Min(10000,decimal.Ceiling(risky/i.Quantity));
+            }).DefaultIfEmpty(0).Max();
+            portions=Math.Min(best.AvailablePortions,usefulLimit);
+            if(portions>0)
             {
-                var rate = Rate(virtualStock, dish, now); if (rate.Score <= 0) break;
-                foreach (var r in rate.Reasons) reasons[r.BatchId] = reasons.TryGetValue(r.BatchId, out var previous) ? previous with { Quantity = previous.Quantity + r.Quantity } : r;
-                foreach (var ingredient in dish.Ingredients) Inventory.Consume(virtualStock, ingredient.ProductId, ingredient.Quantity, now);
-                portions++;
+                foreach(var ingredient in dish.Ingredients){
+                    var need=ingredient.Quantity*portions;var p=Inventory.Product(s,ingredient.ProductId);
+                    foreach(var batch in Inventory.Usable(virtualStock,p.Id,now)){
+                        var used=Math.Min(need,batch.RemainingQuantity);need-=used;
+                        var hours=(decimal)(batch.ExpiresAt-now).TotalHours;
+                        if(used>0&&hours<=Math.Min(p.WarningHours,s.Settings.WarningHours))reasons[batch.Id]=new(batch.Id,p.Name,used,p.Unit,batch.ExpiresAt,decimal.Round(hours,2));
+                        if(need==0)break;
+                    }
+                    Inventory.Consume(virtualStock,ingredient.ProductId,ingredient.Quantity*portions,now);
+                }
             }
             if (portions > 0) plan.Add(new(dish.Id, dish.Name, portions, reasons.Values.ToList()));
         }
@@ -68,10 +81,10 @@ public static class Insights
         var items = new List<Procurement>();
         foreach (var p in s.Products.Where(p=>!p.Archived))
         {
-            var daily = s.Dishes.Sum(d => demand.GetValueOrDefault(d.Id) * d.Ingredients.Where(i => i.ProductId == p.Id).Sum(i => i.Quantity));
+            var daily = s.Dishes.Where(d=>!d.Archived).Sum(d => demand.GetValueOrDefault(d.Id) * d.Ingredients.Where(i => i.ProductId == p.Id).Sum(i => i.Quantity));
             var target = daily * (s.Settings.PlanningHours + s.Settings.LeadTimeHours) / 24m * (1 + s.Settings.SafetyFactor);
             var usable = s.Batches.Where(b => b.ProductId == p.Id && b.ExpiresAt > arrival).Sum(b => b.RemainingQuantity);
-            var minimum = s.Dishes.SelectMany(d => d.Ingredients).Where(i => i.ProductId == p.Id).Select(i => i.Quantity).DefaultIfEmpty(0).Max();
+            var minimum = s.Dishes.Where(d=>!d.Archived).SelectMany(d => d.Ingredients).Where(i => i.ProductId == p.Id).Select(i => i.Quantity).DefaultIfEmpty(0).Max();
             // Without sales history, show only the operational deficit to restore one portion.
             if (daily == 0) target = minimum;
             var quantity = Math.Max(0, target - usable);
@@ -83,7 +96,7 @@ public static class Insights
     public static List<Forecast> Forecasts(State s, DateTimeOffset now)
     {
         var demand = Demand(s, now); var virtualStock = Clone(s);
-        var productRates = s.Products.ToDictionary(p => p.Id, p => s.Dishes.Sum(d => demand.GetValueOrDefault(d.Id) / 24m * d.Ingredients.Where(i => i.ProductId == p.Id).Sum(i => i.Quantity)));
+        var productRates = s.Products.ToDictionary(p => p.Id, p => s.Dishes.Where(d=>!d.Archived).Sum(d => demand.GetValueOrDefault(d.Id) / 24m * d.Ingredients.Where(i => i.ProductId == p.Id).Sum(i => i.Quantity)));
         var results = new Dictionary<string, Forecast>(); var end = now.AddHours(s.Settings.ForecastHours); var at = now;
         void Capture(DateTimeOffset time)
         {
@@ -153,6 +166,11 @@ public static class Insights
             ordersAccepted = s.Orders.Count(o => o.CreatedAt >= from && o.CreatedAt <= to && o.Status == "accepted"),
             ordersRejected = s.Orders.Count(o => o.CreatedAt >= from && o.CreatedAt <= to && o.Status == "rejected"),
             lossBatches = movements.Where(m => m.Kind == "expiry").Select(m => m.BatchId).Distinct().Count(),
+            costs = new[] { "RUB", "USD", "EUR" }.Select(currency => new { currency,
+                consumed = -movements.Where(m=>m.Kind=="order").Sum(m=>m.Quantity * (s.Batches.Find(b=>b.Id==m.BatchId && b.Currency==currency)?.UnitCost??0)),
+                wasted = -movements.Where(m=>m.Kind=="expiry").Sum(m=>m.Quantity * (s.Batches.Find(b=>b.Id==m.BatchId && b.Currency==currency)?.UnitCost??0)) }),
+            pricedMovements = movements.Count(m=>s.Batches.Any(b=>b.Id==m.BatchId&&b.UnitCost.HasValue)),
+            totalMovements = movements.Count,
             daily = Enumerable.Range(0, Math.Min(90, (int)Math.Ceiling((to - from).TotalDays) + 1)).Select(i => {
                 var day = from.Date.AddDays(i);
                 return new { day, accepted = s.Orders.Count(o => o.CreatedAt.UtcDateTime.Date == day && o.CreatedAt >= from && o.CreatedAt <= to && o.Status == "accepted"),
@@ -170,7 +188,7 @@ public static class Insights
                 expiring = s.Batches.Where(b => b.ProductId == p.Id && b.ExpiresAt > now && b.ExpiresAt <= now.AddHours((double)Math.Min(p.WarningHours, s.Settings.WarningHours))).Sum(b => b.RemainingQuantity) }),
             dishes = s.Dishes.Select(d => new { d.Id, d.Name, d.Category, d.Ingredients, d.Archived, portions = d.Archived ? 0 : Inventory.Portions(s, d, now),
                 shortages = Inventory.Missing(s, d.Ingredients.ToDictionary(i => i.ProductId, i => i.Quantity), new[] { d.Id }, now) }),
-            batches = s.Batches.OrderByDescending(b => b.RemainingQuantity > 0).ThenBy(b => b.ExpiresAt).Take(500).Select(b => new { b.Id, b.DeliveryId, b.ProductId, b.InitialQuantity, b.RemainingQuantity, b.ReceivedAt, b.ExpiresAt, b.ManufacturedAt, b.ShelfLifeHours, b.ExpiryBasis,
+            batches = s.Batches.OrderByDescending(b => b.RemainingQuantity > 0).ThenBy(b => b.ExpiresAt).Take(500).Select(b => new { b.Id, b.DeliveryId, b.ProductId, b.InitialQuantity, b.RemainingQuantity, b.ReceivedAt, b.ExpiresAt, b.ManufacturedAt, b.ShelfLifeHours, b.ExpiryBasis, b.UnitCost, b.Currency,
                 status = b.RemainingQuantity == 0 ? "empty" : b.ExpiresAt <= now ? "expired" : b.ExpiresAt <= now.AddHours((double)Math.Min(Inventory.Product(s,b.ProductId).WarningHours, s.Settings.WarningHours)) ? "warning" : "fresh" }),
             deliveries = s.Deliveries.OrderByDescending(x => x.CreatedAt).Take(100), orders = s.Orders.OrderByDescending(x => x.CreatedAt).Take(100),
             movements = s.Movements.OrderByDescending(x => x.At).Take(100), recommendations = recommendations.Ranking, salePlan = recommendations.Plan,

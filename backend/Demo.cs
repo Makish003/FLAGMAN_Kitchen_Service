@@ -20,6 +20,13 @@ public static class Demo
         Inventory.PlaceOrder(s, new([new("caprese", 2), new("pasta", 3)]), "seed-order-1", now);
         Inventory.PlaceOrder(s, new([new("salmon", 1), new("omelet", 2)]), "seed-order-2", now);
         Inventory.PlaceOrder(s, new([new("caesar", 1)]), "seed-order-3", now);
+        // Two independent comparison fixtures, included in the single reproducible demo seed.
+        foreach(var p in new[]{new Product("compare-1","Контрольный продукт 1","g"),new Product("compare-2","Контрольный продукт 2","g"),new Product("scarce-1","Редкий продукт 1","g"),new Product("scarce-2","Редкий продукт 2","g")})Inventory.AddProduct(s,p,now);
+        Inventory.SaveDish(s,new("compare-a","Контрольное A (100 / 10)","Сравнение",[new("compare-1",100),new("compare-2",10)]),now);
+        Inventory.SaveDish(s,new("compare-b","Контрольное B (100 / 100)","Сравнение",[new("compare-1",100),new("compare-2",100)]),now);
+        Inventory.SaveDish(s,new("scarce-a","Жадный выбор (60 / 60)","Сравнение",[new("scarce-1",60),new("scarce-2",60)]),now);
+        Inventory.SaveDish(s,new("scarce-b","Улучшенный выбор (50 / 50)","Сравнение",[new("scarce-1",50),new("scarce-2",50)]),now);
+        Inventory.Deliver(s,new("СРАВНЕНИЕ-42",[new("compare-1",1,"kg",now.AddHours(8),UnitCost:300,Currency:"RUB"),new("compare-2",1,"kg",now.AddHours(8),UnitCost:300,Currency:"RUB"),new("scarce-1",100,"g",now.AddHours(8)),new("scarce-2",100,"g",now.AddHours(8))]),"seed-comparison-42",now);
     }
     // Explicit portable LCG: stable across .NET versions; no runtime Random dependence.
     public static uint Next(ref uint state) { state = unchecked(state * 1664525u + 1013904223u); return state; }

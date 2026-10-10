@@ -11,7 +11,7 @@ public sealed class Store
     readonly string connectionString;
     readonly SemaphoreSlim writer = new(1,1);
     sealed class WriterLease(SemaphoreSlim gate):IDisposable { public void Dispose()=>gate.Release(); }
-    public async Task<IDisposable> AcquireWriter(CancellationToken cancellationToken) { await writer.WaitAsync(cancellationToken); return new WriterLease(writer); }
+    public async Task<IDisposable> AcquireWriter(CancellationToken cancellationToken) { var timer=System.Diagnostics.Stopwatch.StartNew();await writer.WaitAsync(cancellationToken);Telemetry.Timing("writerWait",timer.Elapsed.TotalMilliseconds);return new WriterLease(writer); }
     static readonly string[] Tables = ["products", "dishes", "deliveries", "batches", "orders", "movements", "shortages", "events", "requests", "audit"];
     public Store(string path)
     {
@@ -19,8 +19,9 @@ public sealed class Store
         connectionString = new SqliteConnectionStringBuilder { DataSource = path, DefaultTimeout = 30 }.ToString();
         using var db = Open();
         var version = 0;
-        using (var check = db.CreateCommand()) { check.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE name='schema_migrations'"; if (Convert.ToInt32(check.ExecuteScalar()) > 0) { check.CommandText = "SELECT COALESCE(MAX(version),0) FROM schema_migrations"; version=Convert.ToInt32(check.ExecuteScalar()); if (version > 2) throw new InvalidOperationException("Unsupported database schema; restore a compatible application/database pair."); } }
+        using (var check = db.CreateCommand()) { check.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE name='schema_migrations'"; if (Convert.ToInt32(check.ExecuteScalar()) > 0) { check.CommandText = "SELECT COALESCE(MAX(version),0) FROM schema_migrations"; version=Convert.ToInt32(check.ExecuteScalar()); if (version > 3) throw new InvalidOperationException("Unsupported database schema; restore a compatible application/database pair."); } }
         if (version == 1) { using var backup = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = Path.GetFullPath(path)+".pre-v2-"+Guid.NewGuid().ToString("N")+".db" }.ToString()); backup.Open(); db.BackupDatabase(backup); }
+        if (version is 1 or 2) { using var backup = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = Path.GetFullPath(path)+".pre-v3-"+Guid.NewGuid().ToString("N")+".db" }.ToString()); backup.Open(); db.BackupDatabase(backup); }
         using var cmd = db.CreateCommand();
         cmd.CommandText = "PRAGMA journal_mode=WAL; CREATE TABLE IF NOT EXISTS schema_migrations(version INTEGER PRIMARY KEY); " +
             "CREATE TABLE IF NOT EXISTS metadata(id INTEGER PRIMARY KEY CHECK(id=1), payload TEXT NOT NULL); " +
@@ -34,6 +35,9 @@ public sealed class Store
             "CREATE INDEX IF NOT EXISTS movements_at ON movements(julianday(json_extract(payload,'$.at'))); " +
             "CREATE INDEX IF NOT EXISTS shortages_at ON shortages(julianday(json_extract(payload,'$.at'))); INSERT OR IGNORE INTO schema_migrations VALUES(2);";
         cmd.ExecuteNonQuery();
+        // Optional price/calendar fields remain null/default in historical JSON payloads.
+        cmd.CommandText = "INSERT OR IGNORE INTO schema_migrations VALUES(3);";
+        cmd.ExecuteNonQuery();
     }
     public State Metadata()
     {
@@ -43,7 +47,7 @@ public sealed class Store
     public object Readiness()
     {
         using var db = Open(); using var cmd = db.CreateCommand(); cmd.CommandText = "SELECT MAX(version) FROM schema_migrations";
-        var version = Convert.ToInt32(cmd.ExecuteScalar()); if (version != 2) throw new InvalidOperationException("Schema not ready");
+        var version = Convert.ToInt32(cmd.ExecuteScalar()); if (version != 3) throw new InvalidOperationException("Schema not ready");
         return new { status = "ok", database = "sqlite", schema = version };
     }
     public string? Operation(string scope, string key)
@@ -107,6 +111,7 @@ public sealed class Store
     }
     public T WriteOperation<T>(string scope, string key, Func<State,T> action, string? deliveryId = null, OrderInput? orderInput = null)
     {
+        var timer=System.Diagnostics.Stopwatch.StartNew();
         using var db = Open(); using var tx = db.BeginTransaction(deferred: false); var state = ActiveState(db, tx, scope is not ("monitor" or "product" or "dish" or "settings" or "delivery" or "archive" or "audit") && orderInput is null);
         state.TransactionRealNow=DateTimeOffset.UtcNow;
         var julian=(state.Now(DateTimeOffset.UtcNow).UtcDateTime.ToOADate()+2415018.5).ToString(System.Globalization.CultureInfo.InvariantCulture);
@@ -130,7 +135,7 @@ public sealed class Store
         var batches = state.Batches.ToDictionary(x=>x.Id); var products = state.Products.ToDictionary(x=>x.Id); var dishes = state.Dishes.ToDictionary(x=>x.Id); var orders = state.Orders.ToDictionary(x=>x.Id); var requests = state.Requests.ToDictionary(x=>x.Id); var deliveries = state.Deliveries.ToDictionary(x=>x.Id);
         var result = action(state);
         state.Batches.RemoveAll(x=>batches.TryGetValue(x.Id,out var old)&&x==old); state.Products.RemoveAll(x=>products.TryGetValue(x.Id,out var old)&&x==old); state.Dishes.RemoveAll(x=>dishes.TryGetValue(x.Id,out var old)&&x==old); state.Orders.RemoveAll(x=>orders.TryGetValue(x.Id,out var old)&&x==old); state.Requests.RemoveAll(x=>requests.TryGetValue(x.Id,out var old)&&x==old); state.Deliveries.RemoveAll(x=>deliveries.TryGetValue(x.Id,out var old)&&x==old);
-        Save(db, tx, state); tx.Commit(); return result;
+        Save(db, tx, state);Telemetry.Timing(scope+"PrepareSave",timer.Elapsed.TotalMilliseconds);timer.Restart();tx.Commit();Telemetry.Timing(scope+"Commit",timer.Elapsed.TotalMilliseconds);return result;
     }
     public object Dashboard()
     {
@@ -140,15 +145,25 @@ public sealed class Store
         s.Deliveries = Selected<Delivery>(db, tx, "deliveries", "1 ORDER BY julianday(json_extract(payload,'$.createdAt')) DESC LIMIT 100");
         s.Orders = Selected<Order>(db, tx, "orders", $"julianday(json_extract(payload,'$.createdAt'))>={from.ToString(System.Globalization.CultureInfo.InvariantCulture)} OR rowid IN (SELECT rowid FROM orders ORDER BY julianday(json_extract(payload,'$.createdAt')) DESC LIMIT 100)");
         s.Movements = Selected<Movement>(db, tx, "movements", $"julianday(json_extract(payload,'$.at'))>={from.ToString(System.Globalization.CultureInfo.InvariantCulture)} OR rowid IN (SELECT rowid FROM movements ORDER BY julianday(json_extract(payload,'$.at')) DESC LIMIT 100)");
+        // Financial analytics must resolve historical batch prices beyond the 500-row UI sample.
+        var loadedBatchIds=s.Batches.Select(b=>b.Id).ToHashSet();
+        s.Batches.AddRange(Selected<Batch>(db,tx,"batches",$"json_extract(payload,'$.remainingQuantity')=0 AND id IN (SELECT json_extract(payload,'$.batchId') FROM movements WHERE julianday(json_extract(payload,'$.at'))>={from.ToString(System.Globalization.CultureInfo.InvariantCulture)})").Where(b=>!loadedBatchIds.Contains(b.Id)));
         s.Shortages = Selected<ShortageEvent>(db, tx, "shortages", $"julianday(json_extract(payload,'$.at'))>={from.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
         var totals = new Dictionary<string,int>(); foreach(var table in new[]{"batches","deliveries","orders","movements"}) { using var cmd = db.CreateCommand(); cmd.Transaction=tx; cmd.CommandText=$"SELECT COUNT(*) FROM {table}"; totals[table]=Convert.ToInt32(cmd.ExecuteScalar()); }
         var result = Insights.Snapshot(s, now, totals); tx.Commit(); return result;
+    }
+    public State PlanningState()
+    {
+        using var db=Open();using var tx=db.BeginTransaction(deferred:true);var s=ActiveState(db,tx);
+        var from=s.Now(DateTimeOffset.UtcNow).AddDays(-s.Settings.DemandWindowDays).UtcDateTime.ToOADate()+2415018.5;
+        s.Orders=Selected<Order>(db,tx,"orders",$"julianday(json_extract(payload,'$.createdAt'))>={from.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
+        tx.Commit();return s;
     }
     public object Analytics(DateTimeOffset? from,DateTimeOffset? to)
     {
         using var db=Open();using var tx=db.BeginTransaction(deferred:true);var s=Metadata(db,tx);var now=s.Now(DateTimeOffset.UtcNow);var begin=from??now.AddDays(-7);var end=to??now;Inventory.Require(end>=begin,"Конец периода раньше начала");
         string Between(string field)=>$"julianday(json_extract(payload,'$.{field}')) BETWEEN {(begin.UtcDateTime.ToOADate()+2415018.5).ToString(System.Globalization.CultureInfo.InvariantCulture)} AND {(end.UtcDateTime.ToOADate()+2415018.5).ToString(System.Globalization.CultureInfo.InvariantCulture)}";
-        s.Products=Selected<Product>(db,tx,"products");s.Orders=Selected<Order>(db,tx,"orders",Between("createdAt"));s.Movements=Selected<Movement>(db,tx,"movements",Between("at"));s.Shortages=Selected<ShortageEvent>(db,tx,"shortages",Between("at"));var result=Insights.Analytics(s,begin,end);tx.Commit();return result;
+        s.Products=Selected<Product>(db,tx,"products");s.Orders=Selected<Order>(db,tx,"orders",Between("createdAt"));s.Movements=Selected<Movement>(db,tx,"movements",Between("at"));s.Shortages=Selected<ShortageEvent>(db,tx,"shortages",Between("at"));s.Batches=Selected<Batch>(db,tx,"batches","id IN (SELECT json_extract(payload,'$.batchId') FROM movements WHERE "+Between("at")+")");var result=Insights.Analytics(s,begin,end);tx.Commit();return result;
     }
     public void Backup(string target)
     {
@@ -220,7 +235,7 @@ public sealed class Store
         Upsert(db, tx, "audit", s.Audit, x => x.Id);
         var metadata = new State { Settings = s.Settings, DemoOffsetHours = s.DemoOffsetHours, Revision = s.Revision };
         using var cmd = db.CreateCommand(); cmd.Transaction = tx;
-        cmd.CommandText = "INSERT INTO metadata VALUES(1,$payload) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload";
+        cmd.CommandText = "INSERT INTO metadata VALUES(1,$payload) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload WHERE payload<>excluded.payload";
         cmd.Parameters.AddWithValue("$payload", JsonSerializer.Serialize(metadata, Json)); cmd.ExecuteNonQuery();
     }
 }

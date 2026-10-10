@@ -59,6 +59,8 @@ public static class Inventory
             {
                 var product = Product(s, item.ProductId); var quantity = ConvertQuantity(item.Quantity, item.Unit, product.Unit);
                 Require(!product.Archived,"Продукт архивирован");
+                Require(item.UnitCost is null || item.UnitCost is >=0 and <=1000000000,"Цена должна быть от 0 до 1 млрд");
+                Require(item.UnitCost is null ? item.Currency is null : item.Currency is "RUB" or "USD" or "EUR","Для цены выберите RUB, USD или EUR; без цены валюта не задаётся");
                 Require(item.ManufacturedAt is null || item.ManufacturedAt <= received, "Производство не может быть позже поступления");
                 Require(item.ShelfLifeHours is null || item.ShelfLifeHours is > 0 and <= 87600, "Некорректный срок хранения");
                 Require(item.ExpiresAt is null || item.ExpiryDate is null, "Передайте expiresAt или expiryDate, не оба поля");
@@ -78,7 +80,8 @@ public static class Inventory
                     basis = item.ManufacturedAt.HasValue ? "manufactured" : "received";
                 }
                 Require(expiry > received, "Срок годности должен быть позже поступления");
-                batches.Add(new(Id(), id, product.Id, quantity, quantity, received.ToUniversalTime(), expiry.ToUniversalTime(), item.ManufacturedAt, item.ShelfLifeHours, basis));
+                var unitCost=item.UnitCost / (item.Unit is "kg" or "l" ? 1000m : 1m);
+                batches.Add(new(Id(), id, product.Id, quantity, quantity, received.ToUniversalTime(), expiry.ToUniversalTime(), item.ManufacturedAt, item.ShelfLifeHours, basis,unitCost,item.Currency));
             }
             var delivery = new Delivery(id, input.Number, created.ToUniversalTime(), received.ToUniversalTime(), batches.Select(x => x.Id).ToList());
             s.Deliveries.Add(delivery); s.Batches.AddRange(batches);
@@ -147,5 +150,9 @@ public static class Inventory
         try { TimeZoneInfo.FindSystemTimeZoneById(settings.Timezone); } catch { throw new DomainException("Неизвестный часовой пояс"); }
         Require(settings.WarningHours is > 0 and <= 8760 && settings.DemandWindowDays is >= 1 and <= 90 && settings.PlanningHours is >= 1 and <= 720
             && settings.LeadTimeHours is >= 0 and <= 720 && settings.SafetyFactor is >= 0 and <= 5 && settings.ForecastHours is >= 1 and <= 720, "Некорректные настройки");
+        Require(settings.OpenHour is >=0 and <=23 && settings.CloseHour>settings.OpenHour && settings.CloseHour<=24,"Расписание: открытие 0–23, закрытие позже открытия до 24");
+        Require(settings.OpenDays is null || settings.OpenDays.Count>0 && settings.OpenDays.All(d=>d is >=0 and <=6) && settings.OpenDays.Distinct().Count()==settings.OpenDays.Count,"Дни работы: 0 (воскресенье) – 6");
+        Require(settings.MinimumHistoryDays is >=1 and <=90 && settings.MinimumHistoryOrders is >=1 and <=10000,"Некорректный минимум истории");
+        Require(settings.ManualDailyDemand is null || settings.ManualDailyDemand.All(x=>x.Value is >=0 and <=10000),"Ручной спрос: 0–10000 порций в день");
     }
 }
