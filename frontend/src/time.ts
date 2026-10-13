@@ -1,5 +1,8 @@
 // Convert a wall clock in the restaurant zone, independent of the browser zone.
 // Ambiguous DST times require an explicit offset; gaps are rejected.
+export function restaurantDate(value: string, zone: string): string {
+  return new Intl.DateTimeFormat('sv-SE',{timeZone:zone,year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(value));
+}
 export function restaurantUtc(value: string, zone: string): string {
   const parts = value.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/);
   if (!parts) throw new Error('Укажите дату и время ресторана.');

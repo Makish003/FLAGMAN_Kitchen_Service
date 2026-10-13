@@ -6,6 +6,7 @@ public sealed class PlanningService
 {
     readonly object gate=new();string? key;PlannerResult? cached;
     public PlannerResult Calculate(State state,DateTimeOffset now,PlanningInput input) {
+        Inventory.Require(state.Dishes.Any(d=>!d.Archived),"Сначала добавьте активные блюда в меню.");
         var fingerprint=state.Revision+":"+JsonSerializer.Serialize(input,Store.Json);
         lock(gate){
             if(key==fingerprint&&cached is not null&&now>=cached.Start&&now<cached.ValidUntil)return cached;

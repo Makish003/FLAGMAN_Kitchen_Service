@@ -1,7 +1,28 @@
 using Flagman;
 using Microsoft.Data.Sqlite;
 
-if (args.Length < 2) throw new ArgumentException("verify <db> | backup <source> <new-target> | restore <backup> <new-target>");
+if (args.Length < 2) throw new ArgumentException("verify <db> | backup <source> <new-target> | restore <backup> <new-target> | reset <db> <empty|demo>");
+if (args[0] == "reset") {
+    if (args.Length != 3 || args[2] is not ("empty" or "demo")) throw new ArgumentException("reset <db> <empty|demo>");
+    var path = Path.GetFullPath(args[1]);
+    // On Windows, reject files held by a running API before changing anything.
+    var guards = new List<FileStream>();
+    try {
+        foreach (var file in new[] { path, path + "-wal", path + "-shm" })
+            if (File.Exists(file)) guards.Add(new FileStream(file, FileMode.Open, FileAccess.ReadWrite, FileShare.None));
+    } catch (IOException ex) {
+        throw new IOException("Stop the Flagman server before resetting its database.", ex);
+    } finally { foreach (var guard in guards) guard.Dispose(); }
+    if (File.Exists(path)) {
+        var backup = path + ".before-reset-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss") + "-" + Guid.NewGuid().ToString("N") + ".db";
+        Store.BackupFile(path, backup); new Store(backup).VerifyIntegrity();
+        SqliteConnection.ClearAllPools(); Console.WriteLine("Backup: " + backup);
+    }
+    var store = new Store(path);
+    store.Reset(args[2] == "demo", DateTimeOffset.UtcNow);
+    store.VerifyIntegrity(); SqliteConnection.ClearAllPools();
+    Console.WriteLine($"Reset ({args[2]}): {path}"); return;
+}
 if(args[0]=="fixture") {
     if(File.Exists(args[1]))throw new IOException("Fixture target must be new");
     var active=int.Parse(Environment.GetEnvironmentVariable("FLAGMAN_LOAD_ACTIVE")??"1000");if(active is <1 or >10000)throw new ArgumentException("Active load: 1..10000");

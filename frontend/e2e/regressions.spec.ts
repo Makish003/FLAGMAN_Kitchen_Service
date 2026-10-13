@@ -4,8 +4,35 @@ import {chooseOption} from './helpers';
 
 test.use({baseURL:'http://localhost:5080',timezoneId:'Europe/Moscow'});
 const now='2026-10-11T05:00:00Z';
-const analytics={from:'2026-10-01T00:00:00Z',to:now,ordersAccepted:1,ordersRejected:0,lossBatches:0,products:[],daily:[]};
-async function fixture(page:Page){
+const analytics={timezone:'Europe/Moscow',priceCoverage:[],from:'2026-10-01T00:00:00Z',to:now,ordersAccepted:1,ordersRejected:0,lossBatches:0,products:[],daily:[]};
+test.describe('receipt date validation',()=>{
+  test.use({timezoneId:'America/Los_Angeles'});
+  test('past restaurant days are highlighted and block preview and save',async({page})=>{
+    await fixture(page);
+    let requests=0;
+    await page.route(/\/api\/deliveries(?:\/preview)?$/,route=>{requests++;return route.fulfill({json:{}});});
+    await page.goto('/deliveries');
+    await page.getByRole('button',{name:'Принять поставку',exact:true}).first().click();
+    const dialog=page.getByRole('dialog');
+    const receipt=dialog.getByLabel(/^Время поступления/);
+    await expect(receipt).toHaveAttribute('min','2026-10-11T00:00');
+    await dialog.getByLabel('Количество',{exact:true}).fill('100');
+    await receipt.fill('2026-10-10T23:59');
+    await expect(receipt).toHaveAttribute('aria-invalid','true');
+    await expect(dialog.getByRole('alert')).toContainText('Дата поступления не может быть раньше');
+    expect(await receipt.evaluate(input=>(input as HTMLInputElement).validity.rangeUnderflow)).toBe(true);
+    await dialog.getByRole('button',{name:'Рассчитать результат поставки',exact:true}).click();
+    await dialog.getByRole('button',{name:'Сохранить',exact:true}).click();
+    expect(requests).toBe(0);
+    for(const value of ['2026-10-11T00:00','2026-10-12T12:00','']){
+      await receipt.fill(value);
+      await expect(receipt).toHaveAttribute('aria-invalid','false');
+      expect(await receipt.evaluate(input=>(input as HTMLInputElement).checkValidity())).toBe(true);
+      await expect(dialog.getByRole('alert')).toHaveCount(0);
+    }
+  });
+});
+async function fixture(page:Page,menu={active:true}){
   let revision=1;
   await page.addInitScript(()=>{
     (window as any).EventSource=class extends EventTarget {
@@ -21,7 +48,7 @@ async function fixture(page:Page){
     const pathname=new URL(route.request().url()).pathname;
     const body=pathname==='/api/session'?{name:'Управляющий',demo:true}:
       pathname.startsWith('/api/history/')?{items:[],total:0}:
-      {now,revision,settings:{timezone:'Europe/Moscow',warningHours:48,leadTimeHours:2},products:[{id:'t',name:'Томаты',unit:'g',usable:1000,physical:1000}],dishes:[{id:'a',name:'Блюдо А',portions:2,ingredients:[{productId:'t',quantity:500}],shortages:[]}],batches:[],deliveries:[],orders:[],movements:[],recommendations:[],analytics,totals:{batches:0,deliveries:0,orders:0,movements:0}};
+      {now,revision,settings:{timezone:'Europe/Moscow',warningHours:48,leadTimeHours:2},products:[{id:'t',name:'Томаты',unit:'g',usable:1000,physical:1000}],dishes:menu.active?[{id:'a',name:'Блюдо А',portions:2,ingredients:[{productId:'t',quantity:500}],shortages:[]}]:[],batches:[],deliveries:[],orders:[],movements:[],recommendations:[],analytics,totals:{batches:0,deliveries:0,orders:0,movements:0}};
     return route.fulfill({json:body});
   });
   return async()=>{
@@ -31,6 +58,44 @@ async function fixture(page:Page){
     await response;
   };
 }
+
+test('offers cannot calculate without a menu or revive a result after the last dish is archived',async({page})=>{
+  const menu={active:false},refresh=await fixture(page,menu);
+  let requests=0,release!:()=>void,started!:()=>void;
+  const requested=new Promise<void>(resolve=>started=resolve);
+  await page.route('**/api/planning',async route=>{
+    requests++;started();await new Promise<void>(resolve=>release=resolve);
+    await route.fulfill({json:{revision:1,start:now,validUntil:'2026-10-12T05:00:00Z',demandBasis:'СТАРЫЙ РАСЧЁТ',plan:[],baseline:[],risks:[],score:0,baselineScore:0}});
+  });
+  await page.goto('/offers');
+  const calculate=page.getByRole('button',{name:'Рассчитать совместный план',exact:true});
+  await expect(calculate).toBeDisabled();
+  await expect(page.locator('#offers-menu-required')).toContainText('В меню нет активных блюд');
+  expect(requests).toBe(0);
+  menu.active=true;await refresh();await expect(calculate).toBeEnabled();
+  await calculate.click();await requested;
+  menu.active=false;await refresh();await expect(page.getByRole('button',{name:'Рассчитываем…',exact:true})).toBeDisabled();
+  release();await expect(page.getByText('СТАРЫЙ РАСЧЁТ',{exact:false})).toHaveCount(0);
+  await expect(calculate).toBeDisabled();
+  await expect(page.getByRole('heading',{name:'Совместный план продаж'})).toHaveCount(0);
+});
+
+test('order and delivery journal search follows the heading without double padding',async({page})=>{
+  await fixture(page);
+  for(const route of ['orders','deliveries']){
+    await page.goto('/'+route);
+    for(const width of [390,1440]){
+      await page.setViewportSize({width,height:960});
+      const gap=await page.locator('.panel').evaluate(panel=>{
+        const subtitle=panel.querySelector('.panel-title p')!.getBoundingClientRect();
+        const search=panel.querySelector('.history-toolbar .search')!.getBoundingClientRect();
+        return search.top-subtitle.bottom;
+      });
+      expect(gap).toBeGreaterThanOrEqual(16);expect(gap).toBeLessThanOrEqual(24);
+      await page.screenshot({path:`../test-results/reports/search-${route}-${width}.png`,fullPage:true});
+    }
+  }
+});
 
 for(const endpoint of ['scenario','planning']){
   test(`${endpoint}: late results and errors cannot revive after edits`,async({page})=>{
@@ -105,12 +170,45 @@ test('analytics keeps the applied period after an SSE update and includes the en
     return route.fulfill({json:{...analytics,ordersAccepted:42}});
   });
   await page.goto('/analytics');
-  await page.getByLabel('С даты (UTC)',{exact:true}).fill('2026-10-02');
-  await page.getByLabel('По дату (UTC)',{exact:true}).fill('2026-10-03');
+  await page.getByLabel('С даты',{exact:true}).fill('2026-10-02');
+  await page.getByLabel('По дату',{exact:true}).fill('2026-10-03');
   await page.getByRole('button',{name:'Применить период'}).click();
   const metric=page.locator('.metric').filter({hasText:'Принято заказов'}).locator('strong');
   await expect(metric).toHaveText('42');
   await refresh();await expect.poll(()=>urls.length).toBe(2);
   await expect(metric).toHaveText('42');
-  for(const url of urls){const params=new URL(url).searchParams;expect(params.get('from')).toBe('2026-10-02T00:00:00Z');expect(params.get('to')).toBe('2026-10-03T23:59:59.9999999Z');}
+  for(const url of urls){const params=new URL(url).searchParams;expect(params.get('fromDate')).toBe('2026-10-02');expect(params.get('toDate')).toBe('2026-10-03');}
+});
+
+test('analytics renders the whole long period, month boundaries and historical shortage count',async({page})=>{
+  const refresh=await fixture(page);
+  const daily=Array.from({length:121},(_,i)=>({day:new Date(Date.UTC(2026,0,1+i)).toISOString().slice(0,10),accepted:i===120?1:0,rejected:0}));
+  await page.route('**/api/analytics?**',route=>{
+    const params=new URL(route.request().url()).searchParams;
+    const empty=params.get('fromDate')==='2026-05-02';
+    return route.fulfill({json:{...analytics,from:empty?'2026-05-01T21:00:00Z':'2025-12-31T21:00:00Z',to:empty?'2026-05-02T20:59:59Z':'2026-05-01T20:59:59Z',ordersAccepted:empty?0:1,products:empty?[]:[{id:'t',name:'Томаты',unit:'g',consumed:0,wasted:0,shortageCount:1,shortageQuantity:500,affectedDishes:['a']}],daily:empty?[{day:'2026-05-02',accepted:0,rejected:0}]:daily}});
+  });
+  await page.goto('/analytics');
+  await page.getByLabel('С даты',{exact:true}).fill('2026-01-01');
+  await page.getByLabel('По дату',{exact:true}).fill('2026-05-01');
+  await page.getByRole('button',{name:'Применить период'}).click();
+  await expect(page.locator('.chart-column')).toHaveCount(121);
+  await expect(page.locator('.chart-column').last()).toContainText('01.05');
+  await expect(page.locator('.chart-column').last().locator('b')).toHaveText('1');
+  const deficit=page.locator('.metric').filter({hasText:'Продуктов в дефиците'}).locator('strong');
+  await expect(deficit).toHaveText('1'); // Current snapshot has no shortages.
+  await refresh();await expect(deficit).toHaveText('1');
+  for(const width of [390,768,1440]){
+    await page.setViewportSize({width,height:960});
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+    await page.locator('.chart').evaluate(el=>{el.scrollLeft=el.scrollWidth;});
+    await page.screenshot({path:`../test-results/analytics-fixed-${width}.png`,fullPage:true});
+  }
+  await page.getByLabel('С даты',{exact:true}).fill('2026-05-02');
+  await page.getByLabel('По дату',{exact:true}).fill('2026-05-02');
+  await page.getByRole('button',{name:'Применить период'}).click();
+  await expect(page.locator('.chart-column')).toHaveCount(1);
+  await expect(page.locator('.chart-readout .green-text')).toHaveText('0 принято');
+  await expect(deficit).toHaveText('0');
+  await expect(page.getByText('За выбранный период дефицита не было')).toBeVisible();
 });

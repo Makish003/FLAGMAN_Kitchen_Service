@@ -28,6 +28,8 @@ builder.Services.Configure<ForwardedHeadersOptions>(o => {
 });
 var storeInstance = new Store(dbPath);
 if (!demo && storeInstance.Metadata().DemoOffsetHours != 0) throw new InvalidOperationException("Demo clock detected. Use a separate, new production database; never reset existing inventory time.");
+if (demo && storeInstance.Read(Demo.NeedsEnrichment))
+    storeInstance.Write(s => Demo.Enrich(s, s.Now(DateTimeOffset.UtcNow)));
 var sessionVersion = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(password + ":" + (Environment.GetEnvironmentVariable("FLAGMAN_SESSION_VERSION") ?? "1"))));
 builder.Services.AddSingleton(storeInstance); builder.Services.AddSingleton<PlanningService>(); builder.Services.AddSingleton<Generator>(); builder.Services.AddHostedService<Flagman.Monitor>();
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme).AddCookie(o => {
@@ -108,7 +110,7 @@ api.MapPost("/orders", (OrderInput input, HttpContext ctx, Store store) => {
     var order = store.WriteOperation("order", ctx.Request.Headers["Idempotency-Key"].ToString(), s => Inventory.PlaceOrder(s, input, ctx.Request.Headers["Idempotency-Key"].ToString(), s.Now(DateTimeOffset.UtcNow)), orderInput:input);
     return Results.Json(order, statusCode: order.Status == "accepted" ? 201 : 422);
 });
-api.MapGet("/analytics", (DateTimeOffset? from, DateTimeOffset? to, Store store) => store.Analytics(from,to));
+api.MapGet("/analytics", (DateTimeOffset? from, DateTimeOffset? to, DateOnly? fromDate, DateOnly? toDate, string? days, Store store) => store.Analytics(from,to,fromDate,toDate,days));
 api.MapGet("/details/{entity}/{id}", (string entity,string id,Store store)=>store.Details(entity,id));
 api.MapPost("/archive/{entity}/{id}", (string entity,string id,HttpContext ctx,Store store)=>store.WriteOperation("archive",id,s=>{
  Inventory.Require(entity is "products" or "dishes","Неизвестный каталог",404);

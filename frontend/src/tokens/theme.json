@@ -254,43 +254,43 @@
     },
     "micro": {
       "$type": "duration",
-      "$value": "170ms"
+      "$value": "200ms"
     },
     "enter": {
       "$type": "duration",
-      "$value": "250ms"
+      "$value": "320ms"
     },
     "exit": {
       "$type": "duration",
-      "$value": "175ms"
+      "$value": "220ms"
     },
     "navigationEnter": {
       "$type": "duration",
-      "$value": "275ms"
+      "$value": "360ms"
     },
     "navigationExit": {
       "$type": "duration",
-      "$value": "200ms"
+      "$value": "280ms"
     },
     "toastEnter": {
       "$type": "duration",
-      "$value": "225ms"
+      "$value": "300ms"
     },
     "listEnter": {
       "$type": "duration",
-      "$value": "175ms"
+      "$value": "200ms"
     },
     "listExit": {
       "$type": "duration",
-      "$value": "140ms"
+      "$value": "180ms"
     },
     "section": {
       "$type": "duration",
-      "$value": "200ms"
+      "$value": "280ms"
     },
     "backdropEnter": {
       "$type": "duration",
-      "$value": "225ms"
+      "$value": "280ms"
     },
     "small": {
       "$type": "dimension",
@@ -302,15 +302,15 @@
     },
     "easeEnter": {
       "$type": "string",
-      "$value": "cubic-bezier(0.16, 1, 0.3, 1)"
+      "$value": "cubic-bezier(0.22, 1, 0.36, 1)"
     },
     "easeExit": {
       "$type": "string",
-      "$value": "cubic-bezier(0.4, 0, 1, 1)"
+      "$value": "cubic-bezier(0.4, 0, 0.6, 1)"
     },
     "easeStandard": {
       "$type": "string",
-      "$value": "cubic-bezier(0.2, 0, 0, 1)"
+      "$value": "cubic-bezier(0.25, 0.1, 0.25, 1)"
     }
   },
   "shadow": {

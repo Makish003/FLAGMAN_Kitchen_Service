@@ -1,6 +1,17 @@
-param([switch]$Demo, [int]$Port = 5080)
+param([switch]$Demo, [ValidateRange(1,65535)][int]$Port = 5080)
 $ErrorActionPreference = 'Stop'
 Set-Location (Split-Path $PSScriptRoot -Parent)
+$portProbe = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, $Port)
+try { $portProbe.Start() }
+catch [System.Net.Sockets.SocketException] {
+    if ($_.Exception.SocketErrorCode -eq [System.Net.Sockets.SocketError]::AddressAlreadyInUse) {
+        Write-Host "Port $Port is already in use. Open http://127.0.0.1:$Port if the app is already running."
+        Write-Host 'To restart, stop the existing server first. To use another port: .\scripts\start.cmd -Port 5081'
+        exit 1
+    }
+    throw
+}
+finally { $portProbe.Stop() }
 if (-not $env:FLAGMAN_PASSWORD -or $env:FLAGMAN_PASSWORD.Length -lt 10) { throw 'Set FLAGMAN_PASSWORD (at least 10 characters) before starting.' }
 $localSdk = Join-Path (Get-Location) '.tools\dotnet\dotnet.exe'
 $sdk = if (Test-Path -LiteralPath $localSdk) { $localSdk } else { 'dotnet' }

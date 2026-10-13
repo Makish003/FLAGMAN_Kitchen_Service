@@ -12,7 +12,7 @@ test.beforeAll(async({request})=>{
 });
 test.beforeEach(async({page})=>{
   await page.context().addCookies(cookies);
-  await page.goto('/overview');await expect(page.locator('.date-line')).toBeVisible();
+  await page.goto('/overview');await expect(page.getByRole('heading',{name:'Обзор кухни',exact:true})).toBeVisible();
 });
 
 test('long dialogs scroll inside their frame and keep footer controls reachable',async({page})=>{

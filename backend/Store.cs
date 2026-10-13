@@ -12,7 +12,7 @@ public sealed class Store
     readonly SemaphoreSlim writer = new(1,1);
     sealed class WriterLease(SemaphoreSlim gate):IDisposable { public void Dispose()=>gate.Release(); }
     public async Task<IDisposable> AcquireWriter(CancellationToken cancellationToken) { var timer=System.Diagnostics.Stopwatch.StartNew();await writer.WaitAsync(cancellationToken);Telemetry.Timing("writerWait",timer.Elapsed.TotalMilliseconds);return new WriterLease(writer); }
-    static readonly string[] Tables = ["products", "dishes", "deliveries", "batches", "orders", "movements", "shortages", "events", "requests", "audit"];
+    static readonly string[] Tables = ["products", "dishes", "deliveries", "batches", "orders", "movements", "shortages", "events", "requests", "audit", "generatorEvents"];
     public Store(string path)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
@@ -75,7 +75,7 @@ public sealed class Store
     public object History(string entity, int page, int size, string? search, string? status, string? sort = null)
     {
         Inventory.Require(page > 0 && page <= 100000 && size is > 0 and <= 100, "Некорректная пагинация");
-        Inventory.Require(entity is "batches" or "deliveries" or "orders" or "movements" or "audit", "Неизвестный журнал", 404);
+        Inventory.Require(entity is "batches" or "deliveries" or "orders" or "movements" or "audit" or "generatorEvents", "Неизвестный журнал", 404);
         using var db = Open(); using var tx = db.BeginTransaction(deferred: true);
         var metadata = Metadata(db, tx); var now = metadata.Now(DateTimeOffset.UtcNow);
         var where = " WHERE ($q='' OR instr(unicode_lower(t.payload),unicode_lower($q))>0" + (entity == "batches" ? " OR EXISTS(SELECT 1 FROM products p WHERE p.id=json_extract(t.payload,'$.productId') AND instr(unicode_lower(json_extract(p.payload,'$.name')),unicode_lower($q))>0)" : "") + ")";
@@ -85,7 +85,7 @@ public sealed class Store
             var warning = "MIN(COALESCE((SELECT json_extract(p.payload,'$.warningHours') FROM products p WHERE p.id=json_extract(t.payload,'$.productId')),48),$warning)/24.0";
             where += status switch { "empty" => $" AND {remaining}=0", "expired" => $" AND {remaining}>0 AND {expiry}<=$now", "warning" => $" AND {remaining}>0 AND {expiry}>$now AND {expiry}<=$now+{warning}", "fresh" => $" AND {remaining}>0 AND {expiry}>$now+{warning}", _ => throw new DomainException("Неизвестный фильтр") };
         }
-        var date = entity == "batches" ? "expiresAt" : entity is "movements" or "audit" ? "at" : "createdAt";
+        var date = entity == "batches" ? "expiresAt" : entity is "movements" or "audit" or "generatorEvents" ? "at" : "createdAt";
         using var cmd = db.CreateCommand(); cmd.Transaction = tx; cmd.Parameters.AddWithValue("$q", search ?? ""); cmd.Parameters.AddWithValue("$warning", (double)metadata.Settings.WarningHours); cmd.Parameters.AddWithValue("$now", now.UtcDateTime.ToOADate()+2415018.5);
         cmd.CommandText = $"SELECT COUNT(*) FROM {entity} t" + where; var total = Convert.ToInt32(cmd.ExecuteScalar());
         cmd.Parameters.AddWithValue("$limit", size); cmd.Parameters.AddWithValue("$offset", (page-1)*size);
@@ -159,11 +159,37 @@ public sealed class Store
         s.Orders=Selected<Order>(db,tx,"orders",$"julianday(json_extract(payload,'$.createdAt'))>={from.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
         tx.Commit();return s;
     }
-    public object Analytics(DateTimeOffset? from,DateTimeOffset? to)
+    public object Analytics(DateTimeOffset? from,DateTimeOffset? to, DateOnly? fromDate = null, DateOnly? toDate = null, string? days = null)
     {
         using var db=Open();using var tx=db.BeginTransaction(deferred:true);var s=Metadata(db,tx);var now=s.Now(DateTimeOffset.UtcNow);var begin=from??now.AddDays(-7);var end=to??now;Inventory.Require(end>=begin,"Конец периода раньше начала");
+        if (fromDate.HasValue || toDate.HasValue)
+        {
+            Inventory.Require(fromDate.HasValue && toDate.HasValue && !from.HasValue && !to.HasValue, "Укажите обе календарные даты без from/to");
+            Inventory.Require(toDate >= fromDate && toDate < DateOnly.MaxValue, "Некорректный календарный период");
+            var zone = TimeZoneInfo.FindSystemTimeZoneById(s.Settings.Timezone);
+            DateTimeOffset Midnight(DateOnly day)
+            {
+                var local = day.ToDateTime(TimeOnly.MinValue);
+                Inventory.Require(!zone.IsInvalidTime(local) && !zone.IsAmbiguousTime(local), "Полночь пропущена или неоднозначна: используйте from/to с явным смещением");
+                return new DateTimeOffset(TimeZoneInfo.ConvertTimeToUtc(local, zone), TimeSpan.Zero);
+            }
+            begin = Midnight(fromDate!.Value); end = Midnight(toDate!.Value.AddDays(1)).AddTicks(-1);
+        }
+        HashSet<DateOnly>? selectedDays = null;
+        if (days is not null)
+        {
+            selectedDays = [];
+            var zone = TimeZoneInfo.FindSystemTimeZoneById(s.Settings.Timezone);
+            var first = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(begin, zone).Date);
+            var last = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(end, zone).Date);
+            foreach (var value in days.Split(',', StringSplitOptions.RemoveEmptyEntries))
+            {
+                Inventory.Require(DateOnly.TryParseExact(value, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var day) && day >= first && day <= last, "Выбранный день вне периода или имеет неверный формат");
+                selectedDays.Add(day);
+            }
+        }
         string Between(string field)=>$"julianday(json_extract(payload,'$.{field}')) BETWEEN {(begin.UtcDateTime.ToOADate()+2415018.5).ToString(System.Globalization.CultureInfo.InvariantCulture)} AND {(end.UtcDateTime.ToOADate()+2415018.5).ToString(System.Globalization.CultureInfo.InvariantCulture)}";
-        s.Products=Selected<Product>(db,tx,"products");s.Orders=Selected<Order>(db,tx,"orders",Between("createdAt"));s.Movements=Selected<Movement>(db,tx,"movements",Between("at"));s.Shortages=Selected<ShortageEvent>(db,tx,"shortages",Between("at"));s.Batches=Selected<Batch>(db,tx,"batches","id IN (SELECT json_extract(payload,'$.batchId') FROM movements WHERE "+Between("at")+")");var result=Insights.Analytics(s,begin,end);tx.Commit();return result;
+        s.Products=Selected<Product>(db,tx,"products");s.Dishes=Selected<Dish>(db,tx,"dishes");s.Orders=Selected<Order>(db,tx,"orders",Between("createdAt"));s.Movements=Selected<Movement>(db,tx,"movements",Between("at"));s.Shortages=Selected<ShortageEvent>(db,tx,"shortages",Between("at"));s.Batches=Selected<Batch>(db,tx,"batches","id IN (SELECT json_extract(payload,'$.batchId') FROM movements WHERE "+Between("at")+")");var result=Insights.Analytics(s,begin,end,selectedDays);tx.Commit();return result;
     }
     public void Backup(string target)
     {
@@ -199,6 +225,17 @@ public sealed class Store
         using var db = Open(); using var tx = db.BeginTransaction(deferred: false);
         var state = Load(db, tx); var result = action(state); Save(db, tx, state); tx.Commit(); return result;
     }
+    // Offline maintenance only: replace all restaurant data in a single transaction.
+    public void Reset(bool demo, DateTimeOffset now)
+    {
+        using var db = Open(); using var tx = db.BeginTransaction(deferred: false);
+        using var cmd = db.CreateCommand(); cmd.Transaction = tx;
+        cmd.CommandText = string.Join(" ", Tables.Select(t => $"DELETE FROM {t};")) + " DELETE FROM metadata;";
+        cmd.ExecuteNonQuery();
+        var state = new State();
+        if (demo) Demo.Seed(state, now);
+        Save(db, tx, state); tx.Commit();
+    }
     static List<T> Rows<T>(SqliteConnection db, SqliteTransaction tx, string table)
     {
         using var cmd = db.CreateCommand(); cmd.Transaction = tx; cmd.CommandText = $"SELECT payload FROM {table} ORDER BY rowid";
@@ -215,7 +252,7 @@ public sealed class Store
         s.Deliveries = Rows<Delivery>(db, tx, "deliveries"); s.Batches = Rows<Batch>(db, tx, "batches");
         s.Orders = Rows<Order>(db, tx, "orders"); s.Movements = Rows<Movement>(db, tx, "movements");
         s.Shortages = Rows<ShortageEvent>(db, tx, "shortages"); s.Events = Rows<DomainEvent>(db, tx, "events");
-        s.Requests = Rows<RequestRecord>(db, tx, "requests"); s.Audit = Rows<AuditEntry>(db, tx, "audit"); return s;
+        s.Requests = Rows<RequestRecord>(db, tx, "requests"); s.Audit = Rows<AuditEntry>(db, tx, "audit"); s.GeneratorEvents = Rows<GeneratorEvent>(db, tx, "generatorEvents"); return s;
     }
     static void Upsert<T>(SqliteConnection db, SqliteTransaction tx, string table, IEnumerable<T> rows, Func<T, string> key)
     {
@@ -233,6 +270,7 @@ public sealed class Store
         Upsert(db, tx, "shortages", s.Shortages, x => x.Id); Upsert(db, tx, "events", s.Events, x => x.Id.ToString());
         Upsert(db, tx, "requests", s.Requests, x => x.Id);
         Upsert(db, tx, "audit", s.Audit, x => x.Id);
+        Upsert(db, tx, "generatorEvents", s.GeneratorEvents, x => x.Id);
         var metadata = new State { Settings = s.Settings, DemoOffsetHours = s.DemoOffsetHours, Revision = s.Revision };
         using var cmd = db.CreateCommand(); cmd.Transaction = tx;
         cmd.CommandText = "INSERT INTO metadata VALUES(1,$payload) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload WHERE payload<>excluded.payload";

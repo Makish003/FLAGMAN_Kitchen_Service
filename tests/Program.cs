@@ -32,6 +32,15 @@ Test("H03 archived recipe cannot allocate virtual stock", () => {
     Assert(plan.Plan.Single().DishId=="b" && plan.Plan.Single().Portions==2);
     Assert(s.Batches[0].RemainingQuantity==1000); Invariants(s);
 });
+Test("Planning service rejects empty and fully archived menus", () => {
+    var service=new PlanningService();
+    Throws(()=>service.Calculate(new State(),now,new PlanningInput()));
+    var s=Base();
+    var plan=service.Calculate(s,now,new PlanningInput());
+    Assert(plan.Plan.Count==0);
+    s.Dishes=s.Dishes.Select(d=>d with {Archived=true}).ToList();
+    Throws(()=>service.Calculate(s,now,new PlanningInput()));
+});
 Test("H05 expiry between offer and confirmation rejects without partial consumption", () => {
     var s=Base();Delivery(s,500,now.AddMinutes(1));
     Assert(Insights.Recommendations(s,now).Plan.Count>0);
@@ -82,11 +91,163 @@ Test("R13 R18 R19 analytics and manual procurement", () => {
     var analytics=JsonSerializer.Serialize(Insights.Analytics(s,now,now.AddHours(3)),Store.Json);using var json=JsonDocument.Parse(analytics);var p=json.RootElement.GetProperty("products")[0];
     Assert(p.GetProperty("consumed").GetDecimal()==500&&p.GetProperty("wasted").GetDecimal()==500&&p.GetProperty("shortageCount").GetInt32()==1);Invariants(s);
 });
+Test("A1-A3 complete restaurant-calendar daily analytics", () => {
+    var s = Base();
+    var from = DateTimeOffset.Parse("2026-01-01T00:00:00+03:00");
+    var to = DateTimeOffset.Parse("2026-05-01T23:59:59.9999999+03:00");
+    s.Orders.Add(new("first", from, "accepted", [], []));
+    s.Orders.Add(new("last", DateTimeOffset.Parse("2026-04-30T22:00:00Z"), "accepted", [], []));
+    s.Orders.Add(new("rejected", to, "rejected", [], []));
+    s.Orders.Add(new("outside", to.AddTicks(1), "accepted", [], []));
+    var a = JsonSerializer.SerializeToElement(Insights.Analytics(s, from, to), Store.Json);
+    var daily = a.GetProperty("daily").EnumerateArray().ToList();
+    Assert(daily.Count == 121 && daily[0].GetProperty("day").GetString() == "2026-01-01" && daily[^1].GetProperty("day").GetString() == "2026-05-01");
+    Assert(daily.Sum(d => d.GetProperty("accepted").GetInt32()) == a.GetProperty("ordersAccepted").GetInt32());
+    Assert(daily.Sum(d => d.GetProperty("rejected").GetInt32()) == a.GetProperty("ordersRejected").GetInt32());
+    var one = JsonSerializer.SerializeToElement(Insights.Analytics(s, DateTimeOffset.Parse("2026-05-01T00:00:00+03:00"), to), Store.Json);
+    Assert(one.GetProperty("daily").GetArrayLength() == 1 && one.GetProperty("ordersAccepted").GetInt32() == 1);
+    var utc = JsonSerializer.SerializeToElement(Insights.Analytics(s, from.ToUniversalTime(), to.ToUniversalTime()), Store.Json);
+    Assert(utc.GetProperty("daily").GetRawText() == a.GetProperty("daily").GetRawText(), "Input offsets must not change restaurant dates");
+    var empty = JsonSerializer.SerializeToElement(Insights.Analytics(s, from.AddDays(1), from.AddDays(1).AddHours(23)), Store.Json);
+    Assert(empty.GetProperty("daily").GetArrayLength() == 1 && empty.GetProperty("ordersAccepted").GetInt32() == 0);
+});
+Test("Dashboard analytics starts at the first restaurant calendar day", () => {
+    var s=Base();s.Settings=s.Settings with {DemandWindowDays=3,Timezone="Europe/Moscow"};
+    var clock=DateTimeOffset.Parse("2026-10-13T01:00:00Z");
+    s.Orders.Add(new("early",DateTimeOffset.Parse("2026-10-10T21:00:00Z"),"accepted",[],[]));
+    s.Orders.Add(new("before",DateTimeOffset.Parse("2026-10-10T20:59:59Z"),"accepted",[],[]));
+    var a=JsonSerializer.SerializeToElement(Insights.Snapshot(s,clock),Store.Json).GetProperty("analytics");
+    Assert(a.GetProperty("daily").GetArrayLength()==3);
+    Assert(a.GetProperty("daily")[0].GetProperty("day").GetString()=="2026-10-11");
+    Assert(a.GetProperty("from").GetDateTimeOffset()==DateTimeOffset.Parse("2026-10-10T21:00:00Z"));
+    Assert(a.GetProperty("ordersAccepted").GetInt32()==1);
+});
+Test("A5 full warning aggregates and preview survive expired sample crowding", () => {
+    var s = Base();
+    for (var i = 0; i < 501; i++) {
+        s.Batches.Add(new("expired-"+i,"d","t",1,1,now.AddDays(-2),now.AddHours(-1),null,null,"explicit"));
+        s.Batches.Add(new("warning-"+i,"d","t",1,1,now,now.AddHours(1),null,null,"explicit"));
+    }
+    var a = JsonSerializer.SerializeToElement(Insights.Snapshot(s,now),Store.Json);
+    Assert(a.GetProperty("batches").GetArrayLength() == 500);
+    Assert(a.GetProperty("totals").GetProperty("activeBatches").GetInt32() == 1002);
+    Assert(a.GetProperty("totals").GetProperty("warningBatches").GetInt32() == 501);
+    Assert(a.GetProperty("expiringBatches").GetArrayLength() == 5);
+    Assert(a.GetProperty("expiringBatches").EnumerateArray().All(b=>b.GetProperty("id").GetString()!.StartsWith("warning-")));
+});
+Test("Analytics price coverage separates receipts, consumption and losses", () => {
+    var s = Base();
+    Inventory.Deliver(s,new("priced",[new("t",1000,"g",now.AddHours(1),UnitCost:2,Currency:"RUB")]),"priced",now);
+    Delivery(s,1000,now.AddHours(2),"unknown");
+    Inventory.PlaceOrder(s,new([new("a",3)]),"mixed",now);
+    Inventory.Expire(s,now.AddHours(2));
+    var a = JsonSerializer.SerializeToElement(Insights.Analytics(s,now,now.AddHours(2)),Store.Json);
+    var coverage = a.GetProperty("priceCoverage").EnumerateArray().ToList();
+    Assert(coverage[0].GetProperty("total").GetInt32()==2 && coverage[0].GetProperty("priced").GetInt32()==1);
+    Assert(coverage[1].GetProperty("total").GetInt32()==1 && coverage[1].GetProperty("priced").GetInt32()==0);
+    Assert(a.GetProperty("costs")[0].GetProperty("consumed").GetDecimal()==2000);
+});
+Test("Selected calendar days exclude gaps and rank unique rejected orders and priced losses", () => {
+    var s=Base();
+    var first=DateTimeOffset.Parse("2026-10-01T00:00:00+03:00");
+    var shortage=new Shortage("t","Томаты","g",500,0,500,["a"]);
+    for(var i=0;i<4;i++) {
+        // A UTC timestamp on the preceding date still belongs to the restaurant day.
+        var at=first.AddDays(i).AddMinutes(30);
+        s.Orders.Add(new("rejected-"+i,at,"rejected",[new("a",2)],[shortage,shortage]));
+        s.Shortages.Add(new("shortage-"+i,"rejected-"+i,at,shortage));
+        Inventory.Deliver(s,new("priced-"+i,[new("t",10,"g",at.AddHours(1),UnitCost:2,Currency:i==3?"USD":"RUB")]),"priced-"+i,at);
+        Inventory.Expire(s,at.AddHours(1));
+    }
+    Inventory.Deliver(s,new("unknown",[new("t",10,"g",first.AddDays(3).AddHours(3))]),"unknown",first.AddDays(3));
+    Inventory.Expire(s,first.AddDays(3).AddHours(3));
+    var chosen=new HashSet<DateOnly>{new(2026,10,1),new(2026,10,2),new(2026,10,4)};
+    var a=JsonSerializer.SerializeToElement(Insights.Analytics(s,first,first.AddDays(4).AddTicks(-1),chosen),Store.Json);
+    Assert(a.GetProperty("ordersRejected").GetInt32()==3);
+    Assert(a.GetProperty("dishes")[0].GetProperty("rejectedOrders").GetInt32()==3,"Multiple shortage causes doubled the dish count");
+    Assert(a.GetProperty("dishes")[0].GetProperty("rejectedPortions").GetInt32()==6);
+    Assert(a.GetProperty("dishes")[0].GetProperty("reasons").GetArrayLength()==1);
+    Assert(a.GetProperty("daily")[2].GetProperty("rejected").GetInt32()==0);
+    Assert(a.GetProperty("lossBatches").GetInt32()==4);
+    var waste=a.GetProperty("wasteProducts").EnumerateArray().ToList();
+    Assert(waste.Single(p=>p.GetProperty("currency").GetString()=="RUB").GetProperty("cost").GetDecimal()==40);
+    Assert(waste.Single(p=>p.GetProperty("currency").GetString()=="USD").GetProperty("cost").GetDecimal()==20);
+    var coverage=a.GetProperty("priceCoverage")[1];Assert(coverage.GetProperty("priced").GetInt32()==3 && coverage.GetProperty("total").GetInt32()==4);
+    var empty=JsonSerializer.SerializeToElement(Insights.Analytics(s,first,first.AddDays(4),[]),Store.Json);
+    Assert(empty.GetProperty("ordersRejected").GetInt32()==0 && empty.GetProperty("wasteProducts").GetArrayLength()==0);
+});
 Test("R20 manual continuous demand and expiry without history", () => {
     var s=Base();s.Settings=s.Settings with {DemandWindowDays=1};Delivery(s,2500,now.AddDays(10));Inventory.PlaceOrder(s,new([new("a",1)]),"o",now);
     var forecast=Insights.Forecasts(s,now).Find(x=>x.DishId=="a")!;Assert(Math.Abs((forecast.StopAt!.Value-now).TotalHours-72)<0.01,"Expected 72h until one-portion threshold");
     var empty=Base();Delivery(empty,500,now.AddHours(4));var f=Insights.Forecasts(empty,now).First();Assert(!f.HasHistory&&f.StopAt==now.AddHours(4));
     var insufficient=Base();var unknown=Insights.Forecasts(insufficient,now).First();Assert(!unknown.HasHistory);
+});
+Test("Demo prices cover seed, generator, consumption and expiry", () => {
+    var s = new State(); Demo.Seed(s, now);
+    Assert(s.Batches.All(b => b.UnitCost > 0 && b.Currency == "RUB"));
+    Assert(s.Batches.First(b => b.ProductId == "tomato").UnitCost == 0.25m, "kg price must be stored per g");
+    Assert(s.Batches.First(b => b.ProductId == "cream").UnitCost == 0.4m, "l price must be stored per ml");
+    Assert(s.Batches.First(b => b.ProductId == "egg").UnitCost == 12m);
+    for (var i = 0; i < 30; i++) Demo.Generate(s, 42, i, now);
+    Assert(s.Batches.All(b => b.UnitCost > 0 && b.Currency == "RUB"));
+    Inventory.Expire(s, now.AddDays(31));
+    var a = JsonSerializer.SerializeToElement(Insights.Analytics(s, now, now.AddDays(31)), Store.Json);
+    foreach (var coverage in a.GetProperty("priceCoverage").EnumerateArray())
+        Assert(coverage.GetProperty("total").GetInt32() > 0 && coverage.GetProperty("priced").GetInt32() == coverage.GetProperty("total").GetInt32());
+    var rub = a.GetProperty("costs")[0];
+    Assert(rub.GetProperty("consumed").GetDecimal() > 0 && rub.GetProperty("wasted").GetDecimal() > 0);
+    Invariants(s);
+});
+Test("Complete demo supports historical demand, scenarios, excess, forecasts and monetary sales planning", () => {
+    var s = new State(); Demo.Seed(s, now);
+    var model = ScenarioDemand.Build(s, now, "normal");
+    Assert(model.HasHistory && model.TrainingDays >= 6 && model.TrainingOrders >= 24);
+    Assert(new[]{"caprese","pasta","salmon","caesar","omelet"}.All(id => model.Daily[id] > 0));
+    foreach (var scenario in new[]{"low","normal","high"}) {
+        var result = ScenarioDemand.Calculate(s, now, new(Scenario:scenario, PurchaseShelfLifeHours:48));
+        Assert(result.Purchases.Count > 0 && result.Purchases.All(p => p.LikelyExcess.HasValue));
+        Assert(result.Forecasts.Any(f => f.StopFrom.HasValue));
+    }
+    var surplus = ScenarioDemand.Calculate(s, now, new(PurchaseShelfLifeHours:12, PurchaseQuantities:new(){["tomato"]=50000}));
+    Assert(surplus.Purchases.Single(p => p.ProductId == "tomato").LikelyExcess > 0);
+    var service = new PlanningService();
+    foreach (var demand in new[]{"stock","history","manual"}) {
+        var plan = service.Calculate(s, now, new(DemandSource:demand, Objective:"money", Currency:"RUB", ManualLimits:s.Dishes.ToDictionary(d=>d.Id,_=>10)));
+        Assert(plan.Plan.Count > 0 && plan.PricedBatches == plan.RiskBatches);
+    }
+    var analytics = JsonSerializer.SerializeToElement(Insights.Analytics(s, now.AddDays(-7), now), Store.Json);
+    Assert(analytics.GetProperty("ordersAccepted").GetInt32() >= 24 && analytics.GetProperty("ordersRejected").GetInt32() > 0);
+    Assert(analytics.GetProperty("wasteProducts").GetArrayLength() > 0);
+    var rub = analytics.GetProperty("costs")[0];
+    Assert(rub.GetProperty("consumed").GetDecimal() > 0 && rub.GetProperty("wasted").GetDecimal() > 0);
+    Assert(Demo.Enrich(s,now)==0);
+    Invariants(s);
+});
+Test("Legacy demo enrichment is additive, idempotent and preserves current inventory", () => {
+    var s = new State(); Demo.Seed(s, now);
+    s.Deliveries.RemoveAll(d => d.CreatedAt < now); s.Batches.RemoveAll(b => b.ReceivedAt < now);
+    s.Orders.RemoveAll(o => o.CreatedAt < now); s.Movements.RemoveAll(m => m.At < now); s.Shortages.RemoveAll(x => x.At < now);
+    s.Requests.RemoveAll(r => r.Id.Contains("demo-history-v1-"));
+    var stock = JsonSerializer.Serialize(s.Batches, Store.Json);
+    Assert(Demo.NeedsEnrichment(s));
+    Assert(Demo.Enrich(s,now) > 0);
+    Assert(JsonSerializer.Serialize(s.Batches.Where(b=>b.ReceivedAt==now), Store.Json) == stock);
+    Assert(ScenarioDemand.Build(s,now,"normal").HasHistory);
+    var saved = JsonSerializer.Serialize(s, Store.Json);
+    Demo.Seed(s,now); Assert(JsonSerializer.Serialize(s,Store.Json)==saved);
+    Invariants(s);
+});
+Test("Existing demo prices are filled without changing manual deliveries or known prices", () => {
+    var s = new State(); Demo.Seed(s, now); Demo.Generate(s, 42, 0, now);
+    s.Batches = s.Batches.Select((b, i) => i == 0 ? b with { UnitCost = 7m, Currency = "USD" } : b with { UnitCost = null, Currency = null }).ToList();
+    Inventory.Deliver(s, new("ГЕН-42-99", [new("tomato", 100, "g", now.AddDays(1))]), "manual", now);
+    var expected = s.Batches.Count - 2;
+    Assert(Demo.FillMissingPrices(s) == expected);
+    Assert(s.Batches[0].UnitCost == 7m && s.Batches[0].Currency == "USD");
+    Assert(s.Batches[^1].UnitCost is null);
+    Assert(s.Batches.Skip(1).SkipLast(1).All(b => b.UnitCost > 0 && b.Currency == "RUB"));
+    Assert(Demo.FillMissingPrices(s) == 0);
+    Invariants(s);
 });
 Test("R22 deterministic generator sequence", () => {
     State Seed(){var s=new State();Demo.Seed(s,now);return s;}
@@ -96,6 +257,23 @@ Test("R22 deterministic generator sequence", () => {
     var movementCount=a.Movements.Count;for(var i=0;i<15;i++)Demo.Generate(a,42,i,now.AddHours(1));Assert(a.Movements.Count==movementCount,"Restart seed must not duplicate events");
 });
 var testDir=Path.Combine(Path.GetTempPath(),"flagman-tests-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(testDir);
+Test("Generator resumes persisted seed and commits visible entities with durable log", () => {
+    var store=new Store(Path.Combine(testDir,"generator.db"));
+    store.Write(s=>{Inventory.AddProduct(s,new("t","Томаты","g"),now);Inventory.SaveDish(s,new("a","Блюдо","Тест",[new("t",10000)]),now);Demo.Generate(s,42,0,s.Now(DateTimeOffset.UtcNow));return 0;});
+    var generator=new Generator(store);generator.Start(new(42,1));generator.Tick();generator.Stop();
+    var state=store.Read(s=>s);Assert(state.Deliveries.Count==1 && state.Orders.Count==1,"Restart must create next order instead of replaying delivery");
+    var log=JsonSerializer.SerializeToElement(store.History("generatorEvents",1,20,null,null),Store.Json);
+    var entry=log.GetProperty("items")[0];Assert(entry.GetProperty("step").GetInt32()==1 && entry.GetProperty("status").GetString()=="rejected");
+    Assert(entry.GetProperty("entityId").GetString()==state.Orders[0].Id && entry.GetProperty("summary").GetString()!.Contains("не хватает"));
+    generator=new Generator(new Store(Path.Combine(testDir,"generator.db")));generator.Start(new(42,1));generator.Tick();generator.Stop();
+    Assert(store.Read(s=>s.Orders.Count)==2,"New generator instance must continue persisted progress");
+    generator.Start(new(42,1));generator.Tick();generator.Stop();
+    Assert(store.Read(s=>s.Deliveries.Count)==2,"Step 3 must persist a new delivery");
+    Assert(JsonSerializer.SerializeToElement(store.History("generatorEvents",1,20,null,null),Store.Json).GetProperty("total").GetInt32()==3);
+    var empty=new Store(Path.Combine(testDir,"generator-empty.db"));var failed=new Generator(empty);failed.Start(new(1,1));failed.Tick();
+    Assert(JsonSerializer.SerializeToElement(failed.Status,Store.Json).GetProperty("error").GetString()!.Contains("Сначала"));
+    Assert(JsonSerializer.SerializeToElement(empty.History("generatorEvents",1,20,null,null),Store.Json).GetProperty("items")[0].GetProperty("status").GetString()=="error");
+});
 Test("Delivery preview accepts past receipts and exposes changed expiry without saving",()=>{
     var store=new Store(Path.Combine(testDir,"delivery-preview.db"));store.Write(s=>{var f=Base();s.Products=f.Products;s.Dishes=f.Dishes;return 0;});
     var persisted=JsonSerializer.Serialize(store.Read(s=>s),Store.Json);
@@ -127,6 +305,33 @@ var hackathonEvidence=Environment.GetEnvironmentVariable("FLAGMAN_EVIDENCE")??Pa
 HackathonChecks.Run(Test,hackathonEvidence);
 var testSucceeded=false;
 try {
+    Test("A2-A3 store calendar boundaries follow DST and retain instant API",()=>{
+        var store=new Store(Path.Combine(testDir,"calendar-analytics.db"));
+        store.Write(s=>{s.Settings=s.Settings with {Timezone="America/New_York"};s.Orders.Add(new("in",DateTimeOffset.Parse("2026-03-09T03:59:59Z"),"accepted",[],[]));s.Orders.Add(new("out",DateTimeOffset.Parse("2026-03-09T04:00:00Z"),"accepted",[],[]));return 0;});
+        var a=JsonSerializer.SerializeToElement(store.Analytics(null,null,new(2026,3,8),new(2026,3,8)),Store.Json);
+        Assert(a.GetProperty("from").GetDateTimeOffset()==DateTimeOffset.Parse("2026-03-08T05:00:00Z"));
+        Assert(a.GetProperty("to").GetDateTimeOffset()==DateTimeOffset.Parse("2026-03-09T04:00:00Z").AddTicks(-1));
+        Assert(a.GetProperty("daily").GetArrayLength()==1 && a.GetProperty("ordersAccepted").GetInt32()==1);
+        var direct=JsonSerializer.SerializeToElement(store.Analytics(a.GetProperty("from").GetDateTimeOffset(),a.GetProperty("to").GetDateTimeOffset()),Store.Json);
+        Assert(direct.GetProperty("daily").GetRawText()==a.GetProperty("daily").GetRawText());
+        var fall=JsonSerializer.SerializeToElement(store.Analytics(null,null,new(2026,11,1),new(2026,11,1)),Store.Json);
+        Assert((fall.GetProperty("to").GetDateTimeOffset().AddTicks(1)-fall.GetProperty("from").GetDateTimeOffset()).TotalHours==25);
+        Throws(()=>store.Analytics(null,null,new(2026,3,9),new(2026,3,8)));
+        Throws(()=>store.Analytics(null,null,new(2026,3,8),null));
+        Throws(()=>store.Analytics(now,null,new(2026,3,8),new(2026,3,8)));
+        var selected=JsonSerializer.SerializeToElement(store.Analytics(null,null,new(2026,3,8),new(2026,3,9),"2026-03-08"),Store.Json);
+        Assert(selected.GetProperty("ordersAccepted").GetInt32()==1);
+        Throws(()=>store.Analytics(null,null,new(2026,3,8),new(2026,3,9),"2026-03-10"));
+        Throws(()=>store.Analytics(null,null,new(2026,3,8),new(2026,3,9),"bad-date"));
+    });
+    Test("A5 persisted warning pagination agrees with full dashboard totals",()=>{
+        var store=new Store(Path.Combine(testDir,"warning-pagination.db"));var real=DateTimeOffset.UtcNow;
+        store.Write(s=>{s.Products=Base().Products;for(var i=0;i<501;i++)Inventory.Deliver(s,new("warning-"+i,[new("t",1,"g",real.AddHours(2))]),"warning-"+i,real);return 0;});
+        var a=JsonSerializer.SerializeToElement(store.Dashboard(),Store.Json);
+        Assert(a.GetProperty("totals").GetProperty("activeBatches").GetInt32()==501 && a.GetProperty("totals").GetProperty("warningBatches").GetInt32()==501);
+        var last=JsonSerializer.SerializeToElement(store.History("batches",26,20,null,"warning","oldest"),Store.Json);
+        Assert(last.GetProperty("total").GetInt32()==501 && last.GetProperty("items").GetArrayLength()==1);
+    });
     Test("H13 dashboard prices resolve expired batches beyond UI page limit",()=>{
         var store=new Store(Path.Combine(testDir,"historical-prices.db"));var real=DateTimeOffset.UtcNow;
         store.Write(s=>{var f=Base();s.Products=f.Products;s.Dishes=f.Dishes;for(var i=0;i<600;i++)Inventory.Deliver(s,new("priced-history-"+i,[new("t",100,"g",real.AddHours(1),UnitCost:1,Currency:"RUB")]),"priced-"+i,real);Inventory.Expire(s,real.AddHours(1));s.DemoOffsetHours=2;return 0;});
@@ -194,6 +399,34 @@ try {
     Test("R25 small-restaurant load evidence (1000 batches)", () => {
         var path=Path.Combine(testDir,"load.db");var store=new Store(path);store.Write(s=>{var fixture=Base();s.Products=fixture.Products;s.Dishes=fixture.Dishes;for(var i=0;i<1000;i++)Delivery(s,500,now.AddDays(7),"d-"+i);return 0;});
         var watch=Stopwatch.StartNew();for(var i=0;i<5;i++)store.Read(s=>Insights.Snapshot(s,now));watch.Stop();Console.WriteLine($"METRIC snapshot 1000 batches average {watch.ElapsedMilliseconds/5}ms (target <2000ms)");Assert(watch.ElapsedMilliseconds/5<2000);
+    });
+    Test("Offline reset clears all data and restores the factory demo", () => {
+        var path = Path.Combine(testDir, "reset.db"); var store = new Store(path);
+        store.Reset(true, now);
+        store.Write(s => {
+            s.DemoOffsetHours = 72; s.Settings = new Settings(Timezone: "UTC");
+            Inventory.AddProduct(s, new("custom", "Custom", "g"), now);
+            s.GeneratorEvents.Add(new("custom-event", now, 42, 1, "order", null, "error", "test")); return 0;
+        });
+        var before = store.Read(s => JsonSerializer.Serialize(s, Store.Json));
+        try { store.Reset(true, DateTimeOffset.MaxValue); throw new Exception("Expected seed failure"); }
+        catch (ArgumentOutOfRangeException) { }
+        Assert(store.Read(s => JsonSerializer.Serialize(s, Store.Json)) == before, "Failed reset must roll back");
+        var backup = Path.Combine(testDir, "reset-backup.db"); store.Backup(backup);
+        store.Reset(false, now);
+        Assert(new Store(path).Read(s => JsonSerializer.Serialize(s, Store.Json)) == JsonSerializer.Serialize(new State(), Store.Json), "Empty reset left data or settings");
+        Assert(new Store(backup).Read(s => s.Products.Any(p => p.Id == "custom") && s.DemoOffsetHours == 72), "Backup changed");
+        store.Reset(true, now);
+        var expected = new State(); Demo.Seed(expected, now);
+        store.Read(s => {
+            Assert(s.Products.SequenceEqual(expected.Products));
+            Assert(s.Dishes.Select(d => d.Id).SequenceEqual(expected.Dishes.Select(d => d.Id)));
+            Assert(s.Deliveries.Count == expected.Deliveries.Count && s.Batches.Count == expected.Batches.Count && s.Orders.Count == expected.Orders.Count);
+            Assert(s.DemoOffsetHours == 0 && s.Settings == new Settings() && s.GeneratorEvents.Count == 0);
+            Assert(s.Batches.Where(b=>b.RemainingQuantity>0).Min(b => b.ExpiresAt) == now.AddHours(8)); Invariants(s); return 0;
+        });
+        store.Reset(true, now); Assert(store.Read(s => s.Products.Count) == expected.Products.Count, "Repeated reset duplicated demo");
+        store.VerifyIntegrity();
     });
     testSucceeded=true;
 } finally { Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();if(testSucceeded)Directory.Delete(testDir,true);else Console.WriteLine("Failed domain databases retained: "+testDir); }
