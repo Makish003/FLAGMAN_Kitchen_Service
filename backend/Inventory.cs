@@ -13,9 +13,11 @@ public static class Inventory
         => Require(quantity > 0 && quantity <= 1_000_000_000m && decimal.Round(quantity, 3) == quantity, "Количество должно быть положительным, не более 1 млрд и до 3 знаков после запятой");
     public static decimal ConvertQuantity(decimal quantity, string from, string to)
     {
-        ValidateQuantity(quantity);
-        return (from, to) switch { ("kg", "g") or ("l", "ml") => quantity * 1000,
+        Require(quantity > 0 && quantity <= 1_000_000_000m, "Количество должно быть положительным и не более 1 млрд");
+        var normalized = (from, to) switch { ("kg", "g") or ("l", "ml") => quantity * 1000,
             _ when from == to => quantity, _ => throw new DomainException("Несовместимые единицы измерения") };
+        ValidateQuantity(normalized);
+        return normalized;
     }
     public static T Once<T>(State s, string scope, string key, object input, Func<T> action)
     {

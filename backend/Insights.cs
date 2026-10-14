@@ -196,15 +196,19 @@ public static class Insights
                 return new { day = day.ToString("yyyy-MM-dd"), accepted = counts?.accepted ?? 0, rejected = counts?.rejected ?? 0 }; })
         };
     }
-    public static object Snapshot(State s, DateTimeOffset now, Dictionary<string,int>? totals = null)
+    public static object Snapshot(State s, DateTimeOffset now, Dictionary<string,int>? totals = null, IReadOnlyList<Batch>? latestDeliveryBatches = null)
     {
         var zone = TimeZoneInfo.FindSystemTimeZoneById(s.Settings.Timezone);
         var firstDay = TimeZoneInfo.ConvertTime(now, zone).Date.AddDays(1-s.Settings.DemandWindowDays);
         var analyticsStart = new DateTimeOffset(TimeZoneInfo.ConvertTimeToUtc(firstDay, zone), TimeSpan.Zero);
         var recommendations = Recommendations(s, now);
+        var latestPrices = (latestDeliveryBatches ?? s.Batches).GroupBy(b => b.ProductId)
+            .ToDictionary(g => g.Key, g => g.OrderByDescending(b => b.ReceivedAt).First());
         bool Warning(Batch b) => b.RemainingQuantity > 0 && b.ExpiresAt > now && b.ExpiresAt <= now.AddHours((double)Math.Min(Inventory.Product(s, b.ProductId).WarningHours, s.Settings.WarningHours));
         return new { now, demoOffsetHours = s.DemoOffsetHours, revision = s.Revision, settings = s.Settings,
             products = s.Products.Select(p => new { p.Id, p.Name, p.Unit, p.WarningHours, p.Archived,
+                lastUnitCost = latestPrices.GetValueOrDefault(p.Id)?.UnitCost,
+                lastCurrency = latestPrices.GetValueOrDefault(p.Id)?.Currency,
                 physical = s.Batches.Where(b => b.ProductId == p.Id).Sum(b => b.RemainingQuantity),
                 usable = Inventory.Available(s, p.Id, now),
                 expired = s.Batches.Where(b => b.ProductId == p.Id && b.ExpiresAt <= now).Sum(b => b.RemainingQuantity),

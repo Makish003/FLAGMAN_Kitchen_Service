@@ -52,6 +52,14 @@ Test("R01–R05 R10 FEFO 2kg + 3kg / 2.5kg", () => {
     var o = Inventory.PlaceOrder(s, new([new("a", 5)]), "o1", now); Assert(o.Status == "accepted");
     Assert(s.Batches[0].RemainingQuantity == 0 && s.Batches[1].RemainingQuantity == 2500); Invariants(s);
 });
+Test("Unit conversion preserves fractional base quantities and validates normalized limits", () => {
+    Assert(Inventory.ConvertQuantity(1.7005m,"kg","g")==1700.5m);
+    Assert(Inventory.ConvertQuantity(1.234567m,"l","ml")==1234.567m);
+    Assert(Inventory.ConvertQuantity(0.000001m,"kg","g")==0.001m);
+    Throws(()=>Inventory.ConvertQuantity(1.2345678m,"kg","g"));
+    Throws(()=>Inventory.ConvertQuantity(1000001m,"kg","g"));
+    Throws(()=>Inventory.ConvertQuantity(1m,"l","g"));
+});
 Test("R07–R09 shared ingredients reject atomically", () => {
     var s = Base(); Delivery(s, 500, now.AddDays(1)); var o = Inventory.PlaceOrder(s, new([new("a", 1), new("b", 1)]), "o1", now);
     Assert(o.Status == "rejected" && o.Shortages[0].Missing == 500 && s.Batches[0].RemainingQuantity == 500); Assert(s.Movements.Count == 1); Invariants(s);
@@ -257,6 +265,36 @@ Test("R22 deterministic generator sequence", () => {
     var movementCount=a.Movements.Count;for(var i=0;i<15;i++)Demo.Generate(a,42,i,now.AddHours(1));Assert(a.Movements.Count==movementCount,"Restart seed must not duplicate events");
 });
 var testDir=Path.Combine(Path.GetTempPath(),"flagman-tests-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(testDir);
+Test("Idle monitor does not invalidate calculations on startup or minute heartbeat", () => {
+    var store=new Store(Path.Combine(testDir,"idle-monitor.db"));
+    var worker=new Flagman.Monitor(store,new Generator(store),Microsoft.Extensions.Logging.Abstractions.NullLogger<Flagman.Monitor>.Instance);
+    var revision=store.Metadata().Revision;
+    worker.StartAsync(CancellationToken.None).GetAwaiter().GetResult();
+    try {
+        Task.Delay(2200).GetAwaiter().GetResult();
+        Assert(store.Metadata().Revision==revision,"Idle monitor startup changed warehouse revision");
+        Task.Delay(61000).GetAwaiter().GetResult();
+        Assert(store.Metadata().Revision==revision,"Minute heartbeat changed warehouse revision");
+    } finally { worker.StopAsync(CancellationToken.None).GetAwaiter().GetResult();worker.Dispose(); }
+});
+Test("Last delivery price includes consumed history outside dashboard sample", () => {
+    var store=new Store(Path.Combine(testDir,"last-delivery-price.db"));
+    var receipt=DateTimeOffset.UtcNow.AddDays(-100);
+    store.Write(s=>{
+        Inventory.AddProduct(s,new("t","Томаты","g"),receipt);
+        for(var i=0;i<501;i++)s.Batches.Add(new("old-"+i,"old-delivery","t",100,0,receipt.AddDays(-10),receipt.AddDays(-9),null,null,"explicit",0.2m,"RUB"));
+        s.Batches.Add(new("last","last-delivery","t",100,0,receipt,receipt.AddDays(1),null,null,"explicit",0.4m,"USD"));
+        return 0;
+    });
+    var snapshot=JsonSerializer.SerializeToElement(store.Dashboard(),Store.Json);
+    Assert(snapshot.GetProperty("batches").GetArrayLength()==500);
+    var product=snapshot.GetProperty("products")[0];
+    Assert(product.GetProperty("lastUnitCost").GetDecimal()==0.4m);
+    Assert(product.GetProperty("lastCurrency").GetString()=="USD");
+    store.Write(s=>{s.Batches.Add(new("unknown","unknown-delivery","t",100,0,receipt.AddDays(2),receipt.AddDays(3),null,null,"explicit"));return 0;});
+    product=JsonSerializer.SerializeToElement(store.Dashboard(),Store.Json).GetProperty("products")[0];
+    Assert(product.GetProperty("lastUnitCost").ValueKind==JsonValueKind.Null,"Unknown latest price must not reuse an older price");
+});
 Test("Generator resumes persisted seed and commits visible entities with durable log", () => {
     var store=new Store(Path.Combine(testDir,"generator.db"));
     store.Write(s=>{Inventory.AddProduct(s,new("t","Томаты","g"),now);Inventory.SaveDish(s,new("a","Блюдо","Тест",[new("t",10000)]),now);Demo.Generate(s,42,0,s.Now(DateTimeOffset.UtcNow));return 0;});

@@ -1,6 +1,7 @@
 import {test,expect,type Page} from '@playwright/test';
 import path from 'node:path';
 import {chooseOption} from './helpers';
+import type {Recommendation} from '../src/types';
 
 test.use({baseURL:'http://localhost:5080',timezoneId:'Europe/Moscow'});
 const now='2026-10-11T05:00:00Z';
@@ -32,7 +33,7 @@ test.describe('receipt date validation',()=>{
     }
   });
 });
-async function fixture(page:Page,menu={active:true}){
+async function fixture(page:Page,menu={active:true},recommendations:Recommendation[]=[]){
   let revision=1;
   await page.addInitScript(()=>{
     (window as any).EventSource=class extends EventTarget {
@@ -48,7 +49,7 @@ async function fixture(page:Page,menu={active:true}){
     const pathname=new URL(route.request().url()).pathname;
     const body=pathname==='/api/session'?{name:'Управляющий',demo:true}:
       pathname.startsWith('/api/history/')?{items:[],total:0}:
-      {now,revision,settings:{timezone:'Europe/Moscow',warningHours:48,leadTimeHours:2},products:[{id:'t',name:'Томаты',unit:'g',usable:1000,physical:1000}],dishes:menu.active?[{id:'a',name:'Блюдо А',portions:2,ingredients:[{productId:'t',quantity:500}],shortages:[]}]:[],batches:[],deliveries:[],orders:[],movements:[],recommendations:[],analytics,totals:{batches:0,deliveries:0,orders:0,movements:0}};
+      {now,revision,settings:{timezone:'Europe/Moscow',warningHours:48,leadTimeHours:2},products:[{id:'t',name:'Томаты',unit:'g',usable:1000,physical:1000}],dishes:menu.active?[{id:'a',name:'Блюдо А',portions:2,ingredients:[{productId:'t',quantity:500}],shortages:[]}]:[],batches:[],deliveries:[],orders:[],movements:[],recommendations,analytics,totals:{batches:0,deliveries:0,orders:0,movements:0}};
     return route.fulfill({json:body});
   });
   return async()=>{
@@ -58,6 +59,33 @@ async function fixture(page:Page,menu={active:true}){
     await response;
   };
 }
+
+test('single-portion ranking stays readable alongside a calculated joint plan',async({page})=>{
+  await fixture(page,{active:true},[{dishId:'a',dishName:'Блюдо А',score:3.098,availablePortions:2,reasons:[{batchId:'batch-a',productName:'Томаты',quantity:500,unit:'g',expiresAt:'2026-10-11T09:00:00Z',hoursLeft:4}]}]);
+  await page.route('**/api/planning',route=>route.fulfill({json:{revision:1,start:now,validUntil:'2026-10-12T05:00:00Z',demandBasis:'Только склад',plan:[{dishId:'a',dishName:'Блюдо А',portions:1,prepareAt:now,limitingIngredient:'Томаты',reasons:[]}],baseline:[],risks:[],score:3,baselineScore:2,pricedBatches:0,riskBatches:0}}));
+  await page.goto('/offers');
+  const ranking=page.locator('section').filter({has:page.getByRole('heading',{name:'Рейтинг блюд по одной порции',exact:true})});
+  await expect(ranking).toBeVisible();
+  await page.getByRole('button',{name:'Рассчитать совместный план',exact:true}).click();
+  await expect(page.getByRole('heading',{name:'Совместный план продаж',exact:true})).toBeVisible();
+  await expect(ranking).toBeVisible();
+  const card=ranking.locator('.offer-plan-card');
+  await expect(card.getByRole('heading',{name:'Блюдо А',exact:true})).toBeVisible();
+  await expect(card).toContainText('Оценка приоритета');
+  await expect(card).toContainText('До 2 порций');
+  await expect(card).toContainText('Расход скоропортящихся партий на 1 порцию');
+  await expect(card).toContainText('500 г');
+  await expect(card.getByRole('button',{name:'Партия #BATCH-A'})).toBeVisible();
+  for(const width of [1440,390]){
+    await page.setViewportSize({width,height:960});
+    await expect(card).toBeVisible();
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+    await ranking.screenshot({path:`../test-results/reports/offers-ranking-${width}.png`});
+  }
+  await page.getByLabel('Приготовление, минут на слот').fill('15');
+  await expect(page.getByRole('heading',{name:'Совместный план продаж',exact:true})).toHaveCount(0);
+  await expect(ranking).toBeVisible();
+});
 
 test('offers cannot calculate without a menu or revive a result after the last dish is archived',async({page})=>{
   const menu={active:false},refresh=await fixture(page,menu);

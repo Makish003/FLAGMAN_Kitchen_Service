@@ -52,7 +52,7 @@ public sealed class Monitor(Store store, Generator generator, ILogger<Monitor> l
     }
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1)); string previous = ""; DateTimeOffset lastNotification = DateTimeOffset.MinValue;
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1)); string? previous = null;
         while (!stoppingToken.IsCancellationRequested)
         {
             try
@@ -65,8 +65,10 @@ public sealed class Monitor(Store store, Generator generator, ILogger<Monitor> l
                     if(expired.Count>0){Telemetry.LastExpiryLagMs=expired.Max(b=>(now-b.ExpiresAt).TotalMilliseconds);Telemetry.ExpiryLag.Record(Telemetry.LastExpiryLagMs);}
                     Inventory.Expire(s, now);
                     var signature = s.WarningSignature;
-                    if (signature != previous || DateTimeOffset.UtcNow - lastNotification >= TimeSpan.FromMinutes(1))
-                    { s.Emit("time.changed", now); previous = signature; lastNotification = DateTimeOffset.UtcNow; }
+                    // Polling time alone does not change the warehouse. The first
+                    // warning snapshot establishes the baseline without invalidating calculations.
+                    if (previous is not null && signature != previous) s.Emit("time.changed", now);
+                    previous = signature;
                     return 0;
                 });
                 generator.Tick();

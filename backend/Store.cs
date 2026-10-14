@@ -150,7 +150,9 @@ public sealed class Store
         s.Batches.AddRange(Selected<Batch>(db,tx,"batches",$"json_extract(payload,'$.remainingQuantity')=0 AND id IN (SELECT json_extract(payload,'$.batchId') FROM movements WHERE julianday(json_extract(payload,'$.at'))>={from.ToString(System.Globalization.CultureInfo.InvariantCulture)})").Where(b=>!loadedBatchIds.Contains(b.Id)));
         s.Shortages = Selected<ShortageEvent>(db, tx, "shortages", $"julianday(json_extract(payload,'$.at'))>={from.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
         var totals = new Dictionary<string,int>(); foreach(var table in new[]{"batches","deliveries","orders","movements"}) { using var cmd = db.CreateCommand(); cmd.Transaction=tx; cmd.CommandText=$"SELECT COUNT(*) FROM {table}"; totals[table]=Convert.ToInt32(cmd.ExecuteScalar()); }
-        var result = Insights.Snapshot(s, now, totals); tx.Commit(); return result;
+        // Resolve the last receipt across full history, including consumed batches outside the UI sample.
+        var latestDeliveryBatches = Selected<Batch>(db, tx, "batches", "rowid IN (SELECT (SELECT b.rowid FROM batches b WHERE json_extract(b.payload,'$.productId')=products.id ORDER BY julianday(json_extract(b.payload,'$.receivedAt')) DESC, b.rowid DESC LIMIT 1) FROM products)");
+        var result = Insights.Snapshot(s, now, totals, latestDeliveryBatches); tx.Commit(); return result;
     }
     public State PlanningState()
     {

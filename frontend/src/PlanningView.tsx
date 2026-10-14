@@ -26,8 +26,7 @@ export function PlanningView({s,date,kind,onDraft,demo=false}:{s:Snapshot;date:(
   const excess=purchases.filter(p=>p.likelyExcess!==null&&p.likelyExcess>0);
   const noDemand=!!result&&!manual&&!s.settings.manualDailyDemand&&!result.demand.hasHistory;
   const draft=purchases.map(p=>{
-    const priced=demo?s.batches.filter(b=>b.productId===p.productId&&b.unitCost!=null).sort((a,b)=>b.receivedAt.localeCompare(a.receivedAt))[0]:undefined;
-    return {productId:p.productId,quantity:quantities[p.productId]??p.quantity,unit:p.unit,...(p.shelfLifeHours?{shelfLifeHours:p.shelfLifeHours}:{}),...(priced?{unitCost:priced.unitCost!,currency:priced.currency!}:{})};
+    return {productId:p.productId,quantity:quantities[p.productId]??p.quantity,unit:p.unit,...(p.shelfLifeHours?{shelfLifeHours:p.shelfLifeHours}:{})};
   }).filter(p=>p.quantity>0);
   return <div className="planning-workspace">
     <section className="report-section scenario-controls"><PanelTitle icon={<Calculator size={18}/>} title="Параметры расчёта" subtitle={`Горизонт: ${kind==='forecast'?s.settings.forecastHours:s.settings.planningHours} ч`}/>

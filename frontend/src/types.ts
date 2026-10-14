@@ -1,4 +1,4 @@
-export type Product = { id: string; name: string; unit: string; warningHours: number; archived?: boolean; physical: number; usable: number; expired: number; expiring: number };
+export type Product = { id: string; name: string; unit: string; warningHours: number; archived?: boolean; physical: number; usable: number; expired: number; expiring: number; lastUnitCost?:number|null; lastCurrency?:string|null };
 export type Ingredient = { productId: string; quantity: number };
 export type Shortage = { productId: string; productName: string; unit: string; requested: number; available: number; missing: number; dishIds: string[] };
 export type Dish = { id: string; name: string; category: string; ingredients: Ingredient[]; portions: number; shortages: Shortage[]; archived?: boolean };
