@@ -32,14 +32,14 @@ public sealed class Generator(Store store)
                         _ => new GeneratorEvent(Inventory.Id(), now, seed, nextIndex, nextIndex % 3 == 0 ? "delivery" : "order", null, "replayed", "Ранее обработанное событие; повторного изменения склада нет")
                     };
                     s.GeneratorEvents.Add(entry);
-                    s.Emit("generator.processed", now);
+                    s.Emit("generator.processed", now,entry.EntityId,summary:entry.Summary);
                     return result;
                 });
                 index++; nextIndex++; next = DateTimeOffset.UtcNow.AddSeconds(interval);
             }
             catch (Exception ex) {
                 error = ex.Message; running = false;
-                store.Write(s => { var now = s.Now(DateTimeOffset.UtcNow); s.GeneratorEvents.Add(new(Inventory.Id(), now, seed, nextIndex, nextIndex % 3 == 0 ? "delivery" : "order", null, "error", error)); s.Emit("generator.failed", now); return 0; });
+                store.Write(s => { var now = s.Now(DateTimeOffset.UtcNow); s.GeneratorEvents.Add(new(Inventory.Id(), now, seed, nextIndex, nextIndex % 3 == 0 ? "delivery" : "order", null, "error", error)); s.Emit("generator.failed", now,summary:error); return 0; });
             }
         }
     }

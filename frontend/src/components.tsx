@@ -3,7 +3,15 @@ import { Activity, ArrowDownLeft, ArrowRight, BarChart3, Bell, Boxes, Check, Che
 import {api} from './api';
 import {usePresence} from './motion/usePresence';
 export function Button(props:React.ComponentProps<'button'>) { return <button {...props}/>; }
-export function Input(props:React.ComponentProps<'input'>) { return <input {...props}/>; }
+export function Input(props:React.ComponentProps<'input'>) {
+  return props.type==='number'&&typeof props.value==='number'?<NumericInput {...props} value={props.value}/>:<input {...props}/>;
+}
+function NumericInput({value,onChange,...props}:React.ComponentProps<'input'>&{value:number}) {
+  // Keep the editing text: callers often convert an empty string to numeric zero.
+  const [draft,setDraft]=useState<string|null>(null);
+  useEffect(()=>{setDraft(text=>text!==null&&Number(text)===value?text:null);},[value]);
+  return <input {...props} value={draft!==null&&Number(draft)===value?draft:String(value)} onChange={e=>{setDraft(e.target.value);onChange?.(e);}}/>;
+}
 export function Combobox({children,value,onChange,disabled,required,...props}:React.ComponentProps<'select'>) {
   const options = React.Children.toArray(children).filter(React.isValidElement).map(child => {
     const option = child as React.ReactElement<React.ComponentProps<'option'>>;

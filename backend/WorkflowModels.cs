@@ -21,3 +21,4 @@ public record OfferOverride(string Id,string Visibility,bool Emphasized,string? 
 public record OfferInput(string Visibility,bool Emphasized,string? WaiterNote,int ExpectedVersion);
 public record PublishedOffer(string DishId,string Name,string Category,int AvailablePortions,string Visibility,bool Emphasized,string? WaiterNote,string? UnavailableReason);
 public record WriteOffResult(string BatchId,decimal Quantity,string MovementId);
+public record WriteOffInput(string? Reason);

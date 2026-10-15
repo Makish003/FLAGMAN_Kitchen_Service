@@ -1,0 +1,34 @@
+import {test,expect} from '@playwright/test';
+import {setup,command,loginPage} from './workflow-helpers';
+test('event details show quantities, dishes and reasons and remain searchable',async({page})=>{
+ const f=await setup(page.request),headers={Authorization:'Bearer '+f.manager.token};
+ const response=await command(page.request,f.supplier.token,'/deliveries',{number:'DETAILS-'+f.product,items:[{productId:f.product,quantity:2,unit:'kg',expiresAt:new Date(new Date(f.now).getTime()+3600000).toISOString()}]});
+ expect(response.status()).toBe(201);const request=await response.json();
+ const accept=await command(page.request,f.manager.token,'/delivery-requests/'+request.id+'/acceptance',{expectedVersion:1,items:[{lineId:request.items[0].id,acceptedQuantity:1.5,reason:'Повреждена упаковка'}]});
+ expect(accept.ok()).toBeTruthy();
+ const order=await(await command(page.request,f.waiter.token,'/order-requests',{items:[{dishId:f.dish,portions:2}]})).json();
+ expect((await command(page.request,f.cook.token,'/order-requests/'+order.id+'/decision',{expectedVersion:1,decision:'accept'})).ok()).toBeTruthy();
+ const rejected=await(await command(page.request,f.waiter.token,'/order-requests',{items:[{dishId:f.dish,portions:1}]})).json();
+ expect((await command(page.request,f.cook.token,'/order-requests/'+rejected.id+'/decision',{expectedVersion:1,decision:'reject',reasonCode:'equipment_failure',reason:'Сломана плита'})).ok()).toBeTruthy();
+ await loginPage(page,'manager',process.env.FLAGMAN_PASSWORD!,'/event-log');
+ const search=page.getByRole('textbox',{name:'Поиск по продукту, номеру или ID'});
+ const row=(type:string,id:string)=>page.getByRole('row').filter({hasText:type}).filter({hasText:id}).locator('.event-details');
+ await expect(row('delivery-request.partially_accepted',request.id)).toContainText('принято 1,5 кг из 2 кг');
+ await expect(row('delivery-request.partially_accepted',request.id)).toContainText('Повреждена упаковка');
+ await expect(row('order-request.ready',order.id)).toContainText('2 порц.');
+ await expect(row('order-request.rejected',rejected.id)).toContainText('Сломана плита');
+ await search.fill('Повреждена упаковка');
+ await expect(page.locator('.event-details')).toHaveCount(1);
+ await expect(page.locator('.event-details')).toContainText('Томаты');
+ await page.screenshot({path:'../.tmp/event-details-verification/desktop.png',fullPage:true});
+ await search.fill(request.id);
+ await expect(page.locator('.event-details')).toHaveCount(2);
+ const submitted=row('delivery-request.submitted',request.id);
+ await expect(submitted).toContainText('2 кг');await expect(submitted).not.toContainText('принято');
+ await page.request.post('/api/demo/time',{headers,data:{hours:2}});
+ await search.fill(f.product.slice(2));
+ const expired=page.getByRole('row').filter({hasText:'batch.expired'}).filter({hasText:f.product.slice(2)});
+ await expect(expired.locator('.event-details')).toContainText('500 г в остатке');
+ for(const width of [390,280]){await page.setViewportSize({width,height:850});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy();}
+ await page.screenshot({path:'../.tmp/event-details-verification/mobile.png',fullPage:true});
+});

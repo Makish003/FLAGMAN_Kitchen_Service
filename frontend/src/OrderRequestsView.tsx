@@ -1,7 +1,6 @@
 import {ChefHat,ShoppingBasket} from 'lucide-react';
-import {useState} from 'react';
-import {qty} from './format';
-import {WorkflowStatus} from './workflowUi';
+import {useEffect,useState} from 'react';
+import {OrderRequestCard} from './OrderRequestCard';
 import {Button,Combobox,Dialog,PanelTitle,Empty,Pagination} from './components';
 import {useDialog} from './motion/useDialog';
 import {useWorkflowCommand,useWorkflowResource} from './workflowHooks';
@@ -9,36 +8,33 @@ import type {OrderRequest,PageResult} from './workflowTypes';
 import type {Snapshot} from './types';
 
 const orderGroups=[['submitted','Ожидают приготовления'],['ready','Готовы к выдаче'],['served','Выданы'],['rejected','Отклонены'],['accepted','Завершены ранее'],['cancelled','Отменены']] as const;
-export function OrderRequestsView({s,actorId}:{s:Snapshot;actorId:string}){return <OrderList dishes={s.dishes} actorId={actorId} timezone={s.settings.timezone}/>;}
+export function OrderRequestsView({s,actorId,administrator=false}:{s:Snapshot;actorId:string;administrator?:boolean}){return <OrderList administrator={administrator} dishes={s.dishes} actorId={actorId} timezone={s.settings.timezone}/>;}
 export function CookView({timezone}:{timezone:string}){return <OrderList kitchen timezone={timezone}/>;}
-function OrderList({kitchen=false,dishes=[],actorId,timezone}:{kitchen?:boolean;dishes?:{id:string;name:string}[];actorId?:string;timezone:string}){
+function KitchenClock({timezone}:{timezone:string}){
+ const [now,setNow]=useState(()=>new Date());
+ useEffect(()=>{const timer=setInterval(()=>setNow(new Date()),1000);return()=>clearInterval(timer);},[]);
+ return <time dateTime={now.toISOString()} aria-label="Текущие дата и время">{now.toLocaleString('ru-RU',{timeZone:timezone,day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'})}</time>;
+}
+function OrderList({kitchen=false,administrator=false,dishes=[],actorId,timezone}:{kitchen?:boolean;administrator?:boolean;dishes?:{id:string;name:string}[];actorId?:string;timezone:string}){
  const [page,setPage]=useState(1),[selected,setSelected]=useState<OrderRequest>();
  const [status,setStatus]=useState('all');
  const list=useWorkflowResource<PageResult<OrderRequest>>((kitchen?'/cook':'')+'/order-requests?page='+page+'&status='+status);
  const {run,busy,error}=useWorkflowCommand(list.refresh);
  return <section className="panel workflow-list">
   <PanelTitle icon={kitchen?<ChefHat size={20}/>:<ShoppingBasket size={20}/>} title={kitchen?'Заказы кухни':'Заказы сотрудников'} subtitle={kitchen?'Приготовьте заказ и отметьте готовность к выдаче':'Приготовление подтверждает повар, выдачу — официант'}/>
-  {kitchen&&<p><strong>Заказы за сегодня</strong><small className="muted"> · {timezone}</small></p>}
+  {kitchen&&<p><strong>Заказы за сегодня</strong><span className="muted"> · <KitchenClock timezone={timezone}/></span></p>}
   <div className="tabs" role="group" aria-label="Статус заказов">
    {[['all','Все статусы'],...orderGroups].map(([value,label])=><Button key={value} className={status===value?'selected':''} aria-pressed={status===value} onClick={()=>{setStatus(value);setPage(1);}}>{label}</Button>)}
   </div>
   <p className="form-hint">Ожидающие заказы — сначала самые ранние, завершённые — сначала последние.{kitchen?' При нажатии «Готово» наличие проверяется повторно и ингредиенты списываются.':''}</p>
   {(list.error||error)&&<p role="alert" className="form-error">{list.error||error}</p>}
-  {orderGroups.map(([value,label])=>{const items=list.data?.items.filter(o=>o.status===value)??[];return items.length>0&&<section className="order-status-group" role="region" aria-label={label} key={value}>
-   <h3>{label}</h3>
-   {items.map(o=><article className="workflow-card" key={o.id}>
-   <div className="workflow-card-heading"><h3>Заказ #{o.id.slice(0,8)}</h3><WorkflowStatus status={o.status} order/></div>
-   {o.authorName&&<p className="muted">Официант: {o.authorName}</p>}
-   {o.createdAt&&<p className="muted"><time dateTime={o.createdAt}>{new Date(o.createdAt).toLocaleString('ru-RU',{timeZone:timezone})}</time></p>}
-   {o.items.map(i=><p key={i.dishId}>{i.dishName??dishes.find(d=>d.id===i.dishId)?.name??i.dishId} <strong>× {i.portions}</strong></p>)}
-   {o.reason&&<p>{o.reason}</p>}
-   {o.shortages?.map(x=><p className="error-text" key={x.productName}>{x.productName}: не хватает {qty(x.missing,x.unit)}</p>)}
-   {!kitchen&&o.status==='ready'&&o.authorId===actorId&&<Button className="button primary" disabled={busy} onClick={()=>run('/order-requests/'+o.id+'/serve',{expectedVersion:o.version})}>Подтвердить выдачу</Button>}
-   {kitchen&&o.status==='submitted'&&<div className="workflow-card-heading">
-    <Button className="button secondary" disabled={busy} onClick={()=>setSelected(o)}>Отклонить заказ</Button>
-    <Button className="button primary" disabled={busy} onClick={()=>run('/order-requests/'+o.id+'/decision',{expectedVersion:o.version,decision:'accept'})}>Готово</Button>
-   </div>}
-  </article>)}</section>;})}
+  <div className="order-request-grid">{orderGroups.flatMap(([value])=>list.data?.items.filter(o=>o.status===value)??[]).map(o=><OrderRequestCard key={o.id} order={o} dishes={dishes} timezone={timezone} actions={(!kitchen&&o.status==='ready'&&(administrator||o.authorId===actorId)||(kitchen||administrator)&&o.status==='submitted')?<>
+    {!kitchen&&o.status==='ready'&&(administrator||o.authorId===actorId)&&<Button className="button primary" disabled={busy} onClick={()=>run('/order-requests/'+o.id+'/serve',{expectedVersion:o.version})}>Подтвердить выдачу</Button>}
+    {(kitchen||administrator)&&o.status==='submitted'&&<>
+     <Button className="button secondary" disabled={busy} onClick={()=>setSelected(o)}>Отклонить заказ</Button>
+     <Button className="button primary" disabled={busy} onClick={()=>run('/order-requests/'+o.id+'/decision',{expectedVersion:o.version,decision:'accept'})}>Готово</Button>
+    </>}
+   </>:undefined}/>)}</div>
   {list.data&&!list.data.items.length&&<Empty text="Заказов пока нет"/>}
   <Pagination page={page} total={list.data?.total??0} size={list.data?.size??50} onPage={setPage}/>
   {selected&&<RejectOrder request={selected} refresh={list.refresh} onClose={()=>setSelected(undefined)}/>}

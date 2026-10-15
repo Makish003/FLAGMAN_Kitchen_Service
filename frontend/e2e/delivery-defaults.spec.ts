@@ -14,7 +14,7 @@ test.beforeEach(async({page})=>{
     const products=[{id:'tomato',name:'Томаты',unit:'g',warningHours:48,physical:2500,usable:2500,expired:0,expiring:0,lastUnitCost:0.25,lastCurrency:'RUB'},
       {id:'milk',name:'Молоко',unit:'ml',warningHours:48,physical:1000,usable:1000,expired:0,expiring:0,lastUnitCost:0.1,lastCurrency:'USD'},
       {id:'egg',name:'Яйца',unit:'pcs',warningHours:48,physical:3,usable:3,expired:0,expiring:0,lastUnitCost:null,lastCurrency:null}];
-    return route.fulfill({json:['/api/delivery-requests','/api/order-requests','/api/procurement-requests'].includes(pathname)?{items:[],total:0,page:1,size:50}:['/api/accounts','/api/offers/overrides'].includes(pathname)?[]:pathname==='/api/session'?{id:'mock-manager',role:'manager',name:'Управляющий',demo:false}:pathname.startsWith('/api/history/')?{items:[],total:0}:pathname==='/api/deliveries'?{id:'saved'}:pathname==='/api/scenario'?{revision:1,demand:{hasHistory:true,trainingOrders:10,trainingDays:3},forecasts:[],purchases:[{productId:'tomato',name:'Томаты',unit:'g',quantity:1700,arrival:now,shelfLifeHours:48,likelyExcess:null}]}:
+    return route.fulfill({json:['/api/delivery-requests','/api/order-requests','/api/procurement-requests'].includes(pathname)?{items:[],total:0,page:1,size:50}:['/api/accounts','/api/suppliers','/api/offers/overrides'].includes(pathname)?[]:pathname==='/api/session'?{id:'mock-manager',role:'manager',name:'Управляющий',demo:false}:pathname.startsWith('/api/history/')?{items:[],total:0}:pathname==='/api/deliveries'?{id:'saved'}:pathname==='/api/scenario'?{revision:1,demand:{hasHistory:true,trainingOrders:10,trainingDays:3},forecasts:[],purchases:[{productId:'tomato',name:'Томаты',unit:'g',quantity:1700,arrival:now,shelfLifeHours:48,likelyExcess:null}]}:
       {now,revision:1,settings:{timezone:'Europe/Moscow',warningHours:48,planningHours:24,leadTimeHours:0},products,dishes:[{id:'salad',name:'Салат',ingredients:[],portions:1}],batches:[],expiringBatches:[],deliveries:[],orders:[],movements:[],recommendations:[],procurement:[{productId:'tomato',unit:'g',quantity:1500}],totals:{batches:0,orders:0,deliveries:0,movements:0}}});
   });
   await page.goto('/deliveries');
@@ -96,4 +96,24 @@ test('procurement draft keeps edited quantity and loads last delivery price',asy
   await page.getByRole('button',{name:'Создать черновик поставки'}).click();
   await expect(page.getByRole('heading',{name:'Заявки поставщикам',exact:true})).toBeVisible();
   await expect(page.locator('.workflow-line').getByLabel('Количество',{exact:true})).toHaveValue('2000');
+});
+
+
+test('numeric settings stay empty while editing and do not prefix the replacement with zero',async({page})=>{
+ await page.getByRole('button',{name:/Настройки ресторана/}).click();
+ const dialog=page.getByRole('dialog'),hours=dialog.getByLabel(/^Предупреждать об истечении за, часов/);
+ await expect(hours).toHaveValue('48');
+ await hours.focus();await hours.press('ControlOrMeta+A');await hours.press('Backspace');
+ await expect(hours).toHaveValue('');expect(await hours.evaluate((input:HTMLInputElement)=>input.validity.valueMissing)).toBe(true);
+ await hours.pressSequentially('33');await expect(hours).toHaveValue('33');
+ await hours.fill('0');await hours.press('Backspace');await expect(hours).toHaveValue('');
+ await hours.pressSequentially('7');await expect(hours).toHaveValue('7');
+});
+
+test('numeric product warning allows replacement by a fractional number without zero prefix',async({page})=>{
+ await page.goto('/stock');await page.getByRole('button',{name:'Добавить продукт',exact:true}).click();
+ const hours=page.getByRole('dialog').getByLabel('Предупреждать за, часов',{exact:true});
+ await hours.fill('');await expect(hours).toHaveValue('');
+ await hours.pressSequentially('0.5');await expect(hours).toHaveValue('0.5');
+ await hours.press('ArrowUp');expect(Number(await hours.inputValue())).toBeGreaterThan(0.5);
 });

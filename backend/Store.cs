@@ -12,15 +12,15 @@ public sealed class Store
     readonly SemaphoreSlim writer = new(1,1);
     sealed class WriterLease(SemaphoreSlim gate):IDisposable { public void Dispose()=>gate.Release(); }
     public async Task<IDisposable> AcquireWriter(CancellationToken cancellationToken) { var timer=System.Diagnostics.Stopwatch.StartNew();await writer.WaitAsync(cancellationToken);Telemetry.Timing("writerWait",timer.Elapsed.TotalMilliseconds);return new WriterLease(writer); }
-    static readonly string[] Tables = ["products", "dishes", "deliveries", "batches", "orders", "movements", "shortages", "events", "requests", "audit", "generatorEvents", "users", "credentials", "procurementRequests", "deliveryRequests", "orderRequests", "offerOverrides"];
+    static readonly string[] Tables = ["products", "dishes", "deliveries", "batches", "orders", "movements", "shortages", "events", "eventLog", "requests", "audit", "generatorEvents", "users", "credentials", "procurementRequests", "deliveryRequests", "orderRequests", "offerOverrides"];
     public Store(string path)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
         connectionString = new SqliteConnectionStringBuilder { DataSource = path, DefaultTimeout = 30 }.ToString();
         using var db = Open();
         var version = 0;
-        using (var check = db.CreateCommand()) { check.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE name='schema_migrations'"; if (Convert.ToInt32(check.ExecuteScalar()) > 0) { check.CommandText = "SELECT COALESCE(MAX(version),0) FROM schema_migrations"; version=Convert.ToInt32(check.ExecuteScalar()); if (version > 4) throw new InvalidOperationException("Unsupported database schema; restore a compatible application/database pair."); } }
-        if (version is > 0 and < 4) { using var backup = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = Path.GetFullPath(path)+".pre-v4-"+Guid.NewGuid().ToString("N")+".db" }.ToString()); backup.Open(); db.BackupDatabase(backup); }
+        using (var check = db.CreateCommand()) { check.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE name='schema_migrations'"; if (Convert.ToInt32(check.ExecuteScalar()) > 0) { check.CommandText = "SELECT COALESCE(MAX(version),0) FROM schema_migrations"; version=Convert.ToInt32(check.ExecuteScalar()); if (version > 5) throw new InvalidOperationException("Unsupported database schema; restore a compatible application/database pair."); } }
+        if (version is > 0 and < 5) { using var backup = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = Path.GetFullPath(path)+".pre-v5-"+Guid.NewGuid().ToString("N")+".db" }.ToString()); backup.Open(); db.BackupDatabase(backup); }
         if (version == 1) { using var backup = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = Path.GetFullPath(path)+".pre-v2-"+Guid.NewGuid().ToString("N")+".db" }.ToString()); backup.Open(); db.BackupDatabase(backup); }
         if (version is 1 or 2) { using var backup = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = Path.GetFullPath(path)+".pre-v3-"+Guid.NewGuid().ToString("N")+".db" }.ToString()); backup.Open(); db.BackupDatabase(backup); }
         using var cmd = db.CreateCommand();
@@ -29,6 +29,7 @@ public sealed class Store
             string.Join(" ", Tables.Select(t => $"CREATE TABLE IF NOT EXISTS {t}(id TEXT PRIMARY KEY, payload TEXT NOT NULL);")) +
             "INSERT OR IGNORE INTO schema_migrations VALUES(1);";
         cmd.ExecuteNonQuery();
+        cmd.CommandText = "INSERT OR IGNORE INTO eventLog SELECT id,payload FROM events; CREATE INDEX IF NOT EXISTS eventLog_at ON eventLog(julianday(json_extract(payload,'$.at')));";cmd.ExecuteNonQuery();
         cmd.CommandText = "CREATE INDEX IF NOT EXISTS events_cursor ON events(CAST(id AS INTEGER)); " +
             "CREATE INDEX IF NOT EXISTS batches_active ON batches(json_extract(payload,'$.remainingQuantity'),julianday(json_extract(payload,'$.expiresAt'))); " +
             "CREATE INDEX IF NOT EXISTS batches_fefo ON batches(json_extract(payload,'$.productId'),julianday(json_extract(payload,'$.expiresAt')),julianday(json_extract(payload,'$.receivedAt')),id) WHERE json_extract(payload,'$.remainingQuantity')>0; " +
@@ -43,6 +44,29 @@ public sealed class Store
             "CREATE INDEX IF NOT EXISTS requests_owner ON orderRequests(json_extract(payload,'$.authorId'),json_extract(payload,'$.status'),json_extract(payload,'$.createdAt')); " +
             "CREATE INDEX IF NOT EXISTS credentials_owner ON credentials(json_extract(payload,'$.userId')); INSERT OR IGNORE INTO schema_migrations VALUES(3); INSERT OR IGNORE INTO schema_migrations VALUES(4);";
         cmd.ExecuteNonQuery();
+        // Promote legacy full-access managers once, preserving identity and password.
+        using var migration = db.BeginTransaction();
+        cmd.Transaction = migration;
+        cmd.CommandText = "UPDATE users SET payload=json_set(payload,'$.role','admin','$.sessionVersion',COALESCE(json_extract(payload,'$.sessionVersion'),1)+1) WHERE json_extract(payload,'$.role')='manager' AND NOT EXISTS(SELECT 1 FROM schema_migrations WHERE version=5); INSERT OR IGNORE INTO schema_migrations VALUES(5);";
+        cmd.ExecuteNonQuery();
+        migration.Commit();
+        UpgradeEventDetails(db);
+    }
+    static void UpgradeEventDetails(SqliteConnection db)
+    {
+        // Run once per legacy entry. Do not reinterpret reconstructed data as a snapshot.
+        using var tx = db.BeginTransaction(deferred: false);
+        var legacy = Selected<DomainEvent>(db, tx, "eventLog", "COALESCE(json_extract(payload,'$.detailsVersion'),0)=0");
+        if (legacy.Count > 0)
+        {
+            var state = Load(db, tx);
+            var upgraded = legacy.Select(e => e with { Summary=EventDetails.Historical(state,e), DetailsVersion=1 }).ToList();
+            Upsert(db, tx, "eventLog", upgraded, e => e.Id.ToString());
+            // Retained stream events are saved again by writes; keep both copies in sync.
+            var retained = state.Events.Select(e => e.Id).ToHashSet();
+            Upsert(db, tx, "events", upgraded.Where(e => retained.Contains(e.Id)), e => e.Id.ToString());
+        }
+        tx.Commit();
     }
     public State Metadata()
     {
@@ -52,7 +76,7 @@ public sealed class Store
     public object Readiness()
     {
         using var db = Open(); using var cmd = db.CreateCommand(); cmd.CommandText = "SELECT MAX(version) FROM schema_migrations";
-        var version = Convert.ToInt32(cmd.ExecuteScalar()); if (version != 4) throw new InvalidOperationException("Schema not ready");
+        var version = Convert.ToInt32(cmd.ExecuteScalar()); if (version != 5) throw new InvalidOperationException("Schema not ready");
         return new { status = "ok", database = "sqlite", schema = version };
     }
     public string? Operation(string scope, string key)
@@ -80,10 +104,11 @@ public sealed class Store
     public object History(string entity, int page, int size, string? search, string? status, string? sort = null)
     {
         Inventory.Require(page > 0 && page <= 100000 && size is > 0 and <= 100, "Некорректная пагинация");
-        Inventory.Require(entity is "batches" or "deliveries" or "orders" or "movements" or "audit" or "generatorEvents", "Неизвестный журнал", 404);
+        Inventory.Require(entity is "batches" or "deliveries" or "orders" or "movements" or "audit" or "eventLog" or "generatorEvents", "Неизвестный журнал", 404);
         using var db = Open(); using var tx = db.BeginTransaction(deferred: true);
         var metadata = Metadata(db, tx); var now = metadata.Now(DateTimeOffset.UtcNow);
         var where = " WHERE ($q='' OR instr(unicode_lower(t.payload),unicode_lower($q))>0" + (entity == "batches" ? " OR EXISTS(SELECT 1 FROM products p WHERE p.id=json_extract(t.payload,'$.productId') AND instr(unicode_lower(json_extract(p.payload,'$.name')),unicode_lower($q))>0)" : "") + ")";
+        if(entity=="eventLog")where=" WHERE ($q='' OR instr(unicode_lower(COALESCE(json_extract(t.payload,'$.summary'),'')),unicode_lower($q))>0 OR instr(unicode_lower(COALESCE(json_extract(t.payload,'$.entityId'),'')),unicode_lower($q))>0 OR instr(unicode_lower(json_extract(t.payload,'$.type')),unicode_lower($q))>0 OR instr(unicode_lower(COALESCE(json_extract(t.payload,'$.actorId'),'')),unicode_lower($q))>0)";
         if (entity == "batches" && !string.IsNullOrEmpty(status) && status != "all") {
             var remaining = "json_extract(t.payload,'$.remainingQuantity')";
             var expiry = "julianday(json_extract(t.payload,'$.expiresAt'))";
@@ -94,12 +119,17 @@ public sealed class Store
             Inventory.Require(status is "accepted" or "rejected", "Неизвестный статус заказа");
             where += " AND json_extract(t.payload,'$.status')=$status";
         }
-        var date = entity == "batches" ? "expiresAt" : entity is "movements" or "audit" or "generatorEvents" ? "at" : "createdAt";
+        if(entity=="eventLog" && status is not null and not "all") {
+            Inventory.Require(new[]{"delivery","order","batch","procurement","account","key","session","catalog","recipe","offer","settings","generator","time"}.Contains(status),"Неизвестная категория");
+            where += " AND (json_extract(t.payload,'$.type') LIKE $category)";
+        }
+        var date = entity == "batches" ? (sort == "received_newest" ? "receivedAt" : "expiresAt") : entity is "movements" or "audit" or "eventLog" or "generatorEvents" ? "at" : "createdAt";
         using var cmd = db.CreateCommand(); cmd.Transaction = tx; cmd.Parameters.AddWithValue("$q", search ?? ""); cmd.Parameters.AddWithValue("$warning", (double)metadata.Settings.WarningHours); cmd.Parameters.AddWithValue("$now", now.UtcDateTime.ToOADate()+2415018.5);
+        if(entity=="eventLog"&&status is not null and not "all")cmd.Parameters.AddWithValue("$category",status+"%");
         if(entity=="orders"&&status is not null and not "all")cmd.Parameters.AddWithValue("$status",status);
         cmd.CommandText = $"SELECT COUNT(*) FROM {entity} t" + where; var total = Convert.ToInt32(cmd.ExecuteScalar());
         cmd.Parameters.AddWithValue("$limit", size); cmd.Parameters.AddWithValue("$offset", (page-1)*size);
-        Inventory.Require(sort is null or "oldest" or "newest", "Неизвестный порядок сортировки");
+        Inventory.Require(sort is null or "oldest" or "newest" || entity == "batches" && sort == "received_newest", "Неизвестный порядок сортировки");
         cmd.CommandText = $"SELECT t.payload FROM {entity} t" + where + $" ORDER BY julianday(json_extract(t.payload,'$.{date}')) " + (sort == "oldest" || sort is null && entity=="batches" ? "ASC" : "DESC") + ",t.id LIMIT $limit OFFSET $offset";
         var items = new List<JsonElement>(); using (var reader = cmd.ExecuteReader()) while (reader.Read()) items.Add(JsonSerializer.Deserialize<JsonElement>(reader.GetString(0)));
         if(entity=="batches") {var state=ActiveState(db,tx,false);state.Movements=Selected<Movement>(db,tx,"movements","json_extract(payload,'$.kind') IN ('expiry','write_off')");items=items.Select(item=>{var batch=item.Deserialize<Batch>(Json)!;var node=System.Text.Json.Nodes.JsonNode.Parse(item.GetRawText())!;node["status"]=Inventory.BatchStatus(state,batch,now);return JsonSerializer.SerializeToElement(node,Json);}).ToList();}
@@ -138,8 +168,7 @@ public sealed class Store
         }
         if(scope=="monitor") {
             state.Batches=Selected<Batch>(db,tx,"batches",$"json_extract(payload,'$.remainingQuantity')>0 AND julianday(json_extract(payload,'$.expiresAt'))<={julian}");
-            using var cmd=db.CreateCommand();cmd.Transaction=tx;cmd.CommandText=$"SELECT b.id FROM batches b JOIN products p ON p.id=json_extract(b.payload,'$.productId') WHERE json_extract(b.payload,'$.remainingQuantity')>0 AND julianday(json_extract(b.payload,'$.expiresAt'))>{julian} AND julianday(json_extract(b.payload,'$.expiresAt'))<={julian}+MIN(json_extract(p.payload,'$.warningHours'),$warning)/24.0 ORDER BY b.id";cmd.Parameters.AddWithValue("$warning",(double)state.Settings.WarningHours);
-            using var reader=cmd.ExecuteReader();var ids=new List<string>();while(reader.Read())ids.Add(reader.GetString(0));state.WarningSignature=string.Join(",",ids);
+            state.Batches.AddRange(Selected<Batch>(db,tx,"batches",$"json_extract(payload,'$.remainingQuantity')>0 AND julianday(json_extract(payload,'$.expiresAt'))>{julian}"));
         }
         state.Requests = Selected<RequestRecord>(db, tx, "requests", "id=$key", scope+":"+key);
         if (deliveryId is not null) state.Deliveries = Selected<Delivery>(db, tx, "deliveries", "id=$key", deliveryId);
@@ -286,6 +315,7 @@ public sealed class Store
         Upsert(db, tx, "deliveries", s.Deliveries, x => x.Id); Upsert(db, tx, "batches", s.Batches, x => x.Id);
         Upsert(db, tx, "orders", s.Orders, x => x.Id); Upsert(db, tx, "movements", s.Movements, x => x.Id);
         Upsert(db, tx, "shortages", s.Shortages, x => x.Id); Upsert(db, tx, "events", s.Events, x => x.Id.ToString());
+        Upsert(db, tx, "eventLog", s.Events, x => x.Id.ToString());
         Upsert(db, tx, "requests", s.Requests, x => x.Id);
         Upsert(db, tx, "audit", s.Audit, x => x.Id);
         Upsert(db, tx, "generatorEvents", s.GeneratorEvents, x => x.Id);

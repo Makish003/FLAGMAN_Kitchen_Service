@@ -6,7 +6,7 @@ public static class KitchenChecks
  {
   var now=DateTimeOffset.Parse("2026-10-15T10:00:00Z");
   var s=new State();var manager=new Actor("manager","manager");var cook=new Actor("cook","cook");var waiter=new Actor("waiter","waiter");
-  var account=AccessService.SaveAccount(s,null,new("cook","Повар","cook","cook-password"),manager,now);
+  var account=AccessService.SaveAccount(s,null,new("cook","Повар","cook","cook-password"),new Actor("admin","admin"),now);
   WorkflowChecks.Check(AccessService.Login(s,"cook","cook-password")?.Role=="cook","Cook cannot log in");
   Inventory.AddProduct(s,new("p","Продукт","g"),now);
   Inventory.SaveDish(s,new("d","Блюдо","Тест",[new("p",500)]),now);

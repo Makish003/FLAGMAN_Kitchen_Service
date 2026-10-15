@@ -87,9 +87,10 @@ test('clock and stock refresh preserve delivery calculation; stale results can b
 
 test('expiry sort closes after selection, outside clicks and keyboard dismissal',async({page})=>{
   await page.goto('/stock');
-  const combo=page.getByRole('combobox',{name:'Порядок сроков',exact:true});
+  const combo=page.getByRole('combobox',{name:'Порядок партий',exact:true});
+  await expect(combo).toHaveValue('Последние поступления сверху');
   const list=page.locator('.select-options');
-  for(const name of ['Поздние сначала','Ближайшие сначала','Ближайшие сначала']) {
+  for(const name of ['Срок годности: по убыванию','Срок годности: по возрастанию','Срок годности: по возрастанию']) {
     await combo.click();
     await page.getByRole('option',{name,exact:true}).click();
     await expect(combo).toHaveValue(name);
@@ -105,7 +106,7 @@ test('expiry sort closes after selection, outside clicks and keyboard dismissal'
   }
   await combo.focus();
   await page.keyboard.press('Enter');await page.keyboard.press('End');await page.keyboard.press('Enter');
-  await expect(combo).toHaveValue('Поздние сначала');
+  await expect(combo).toHaveValue('Срок годности: по убыванию');
   await expect(list).toHaveCount(0);
   for(const key of ['Escape','Tab']) {
     await combo.click();await page.keyboard.press(key);
@@ -118,9 +119,9 @@ test.describe('expiry sort on touch screens',()=>{
   test.use({hasTouch:true,viewport:{width:390,height:844}});
   test('selection and tapping outside close the list',async({page})=>{
     await page.goto('/stock');
-    const combo=page.getByRole('combobox',{name:'Порядок сроков',exact:true});
-    await combo.tap();await page.getByRole('option',{name:'Поздние сначала',exact:true}).tap();
-    await expect(combo).toHaveValue('Поздние сначала');
+    const combo=page.getByRole('combobox',{name:'Порядок партий',exact:true});
+    await combo.tap();await page.getByRole('option',{name:'Срок годности: по убыванию',exact:true}).tap();
+    await expect(combo).toHaveValue('Срок годности: по убыванию');
     await expect(combo).toHaveAttribute('aria-expanded','false');
     await expect(page.locator('.select-options')).toHaveCount(0);
     await combo.tap();await page.getByRole('heading',{name:'Склад и партии',exact:true}).tap();
@@ -131,6 +132,7 @@ test.describe('expiry sort on touch screens',()=>{
 
 test('order calculation controls and history search have spacing at desktop and mobile widths',async({page})=>{
   for(const width of [390,750,1440]) {
+    await page.goto('/orders');
     await page.setViewportSize({width,height:960});
     await page.getByRole('button',{name:'Новый заказ',exact:true}).first().click();
     const dialog=page.getByRole('dialog');await expect(dialog).toHaveAttribute('data-phase','open');
