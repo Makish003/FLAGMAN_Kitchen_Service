@@ -2,6 +2,35 @@ import {test,expect} from '@playwright/test';
 import {command,setup,loginPage} from './workflow-helpers';
 import {chooseOption} from './helpers';
 
+test('supplier without entered prices starts with historical purchase prices',async({page,request})=>{
+ const f=await setup(request);
+ const expiresAt=new Date(new Date(f.now).getTime()+7*86400000).toISOString();
+ // Historical receipts belong to another supplier; this supplier has never entered a price.
+ for(const unitCost of [375,undefined]){
+  const delivery=await command(request,f.otherSupplier.token,'/delivery-requests',{number:crypto.randomUUID(),items:[{productId:f.product,quantity:1,unit:'kg',expiresAt,...(unitCost!=null?{unitCost,currency:'EUR'}:{})}]});
+  expect(delivery.ok(),await delivery.text()).toBeTruthy();
+  const doc=await delivery.json();
+  const accepted=await command(request,f.manager.token,'/delivery-requests/'+doc.id+'/acceptance',{expectedVersion:1,items:[{lineId:doc.items[0].id,acceptedQuantity:1}]});
+  expect(accepted.ok(),await accepted.text()).toBeTruthy();
+ }
+ const catalog=await request.get('/api/supplier/catalog',{headers:{Authorization:'Bearer '+f.supplier.token}});
+ expect((await catalog.json()).find((p:any)=>p.id===f.product)).toMatchObject({lastUnitCost:0.375,lastCurrency:'EUR'});
+ const purchase=await command(request,f.manager.token,'/procurement-requests',{supplierId:f.supplier.id,items:[{id:'historical-price-line',productId:f.product,quantity:1,unit:'kg'}]});
+ expect(purchase.ok(),await purchase.text()).toBeTruthy();
+ await loginPage(page,f.supplier.login,f.supplier.password,'/supplier');
+ await page.getByRole('button',{name:'Добавить лот',exact:true}).click();
+ const lot=page.locator('.workflow-line').first();
+ await chooseOption(lot,'Продукт',f.product);
+ await expect(lot.getByLabel('Цена за единицу (необязательно)',{exact:true})).toHaveValue('0.375');
+ await expect(lot.getByRole('combobox',{name:'Валюта',exact:true})).toHaveValue('EUR');
+ await chooseOption(lot,'Продукт',f.cream);
+ await expect(lot.getByLabel('Цена за единицу (необязательно)',{exact:true})).toHaveValue('');
+ await page.getByRole('button',{name:'Ответить по строкам',exact:true}).click();
+ const dialog=page.getByRole('dialog');
+ await expect(dialog.getByLabel('Цена за единицу (необязательно)',{exact:true})).toHaveValue('375');
+ await expect(dialog.getByRole('combobox',{name:'Валюта',exact:true})).toHaveValue('EUR');
+});
+
 test('supplier remembers its own prices in deliveries and procurement responses',async({page,request})=>{
  const f=await setup(request);
  const expiresAt=new Date(new Date(f.now).getTime()+7*86400000).toISOString();
