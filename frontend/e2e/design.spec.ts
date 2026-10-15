@@ -9,7 +9,13 @@ test('design: responsive pages, accessible forms, settings and keyboard navigati
   await page.goto('/');
   await expect(page.getByRole('button',{name:'Открыть кухню'})).toBeVisible();
   const audit=async()=>{
+    // Axe must measure final colours, rather than a frame of the page/dialog fade-in.
+    await page.evaluate(async()=>{
+      const finite=document.getAnimations().filter(a=>Number.isFinite(a.effect?.getComputedTiming().endTime));
+      await Promise.all(finite.map(a=>a.finished.catch(()=>{})));
+    });
     const result=await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21aa','wcag22aa']).analyze();
+    if(result.violations.length)await test.info().attach('accessibility-violations',{body:JSON.stringify({url:page.url(),violations:result.violations},null,2),contentType:'application/json'});
     expect(result.violations.map(v=>`${v.id}: ${v.nodes.map(n=>n.target).join(', ')}`)).toEqual([]);
   };
   await audit();
