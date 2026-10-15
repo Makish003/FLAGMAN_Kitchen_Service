@@ -15,7 +15,7 @@ import { api, ApiError, durableOperation, pendingIntent, recoverPending, clearPe
 import { restaurantUtc } from './time';
 import type { Analytics, Batch, Delivery, Dish, Movement, Order, Settings, Snapshot } from './types';
 import './styles.scss';
-import {Badge,Empty,Metric,PanelTitle,Toolbar,History} from './components';
+import {Badge,Empty,Metric,PanelTitle,Toolbar,History,Pagination} from './components';
 import {Login,StockView,GeneratorView} from './pages';
 import {AnalyticsView} from './AnalyticsView';
 import {WarehouseDashboard} from './WarehouseDashboard';
@@ -208,4 +208,4 @@ function App() {
 const descriptions: Record<string,string> = { stock: 'Остатки по продуктам и партиям. Сроки, которым нужно внимание.', deliveries: 'Принимайте продукты и сохраняйте происхождение каждой партии.', menu: 'Состав блюд и доступные порции по актуальному складу.', orders: 'Все блюда одного заказа проверяются и списываются вместе.', stop: 'Причины недоступности и ингредиенты для пополнения.', offers: 'Помогайте кухне использовать свежие продукты вовремя.', analytics: 'Потери, дефицит, закупки и ожидаемая доступность меню.', expiry: 'Проверьте сроки и используйте продукты вовремя.', procurement: 'Что заказать для следующей смены.', forecast: 'Какие блюда могут стать недоступными и когда.', generator: 'Воспроизводимый поток событий и управляемое время.' };
 createRoot(document.getElementById('root')!).render(<React.StrictMode><App/></React.StrictMode>);
 
-function ManagerDeliveries({s}:{s:Snapshot}){const[page,setPage]=useState(1);const list=useWorkflowResource<PageResult<DeliveryRequest>>('/delivery-requests?size=50&page='+page);return <><div className="history-pagination"><Button disabled={page===1} onClick={()=>setPage(page-1)}>Назад</Button><span>{page}</span><Button disabled={!list.data||page*50>=list.data.total} onClick={()=>setPage(page+1)}>Далее</Button></div><DeliveryRequestsList requests={list.data?.items??[]} products={s.products} manager timezone={s.settings.timezone} refresh={list.refresh}/>{list.error&&<p role="alert">{list.error}</p>}</>;}
+function ManagerDeliveries({s}:{s:Snapshot}){const[page,setPage]=useState(1);const list=useWorkflowResource<PageResult<DeliveryRequest>>('/delivery-requests?size=50&page='+page);return <><DeliveryRequestsList requests={list.data?.items??[]} products={s.products} manager timezone={s.settings.timezone} refresh={list.refresh} pagination={<Pagination page={page} total={list.data?.total??0} size={list.data?.size??50} onPage={setPage}/>}/>{list.error&&<p role="alert">{list.error}</p>}</>;}

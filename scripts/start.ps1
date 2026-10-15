@@ -12,7 +12,6 @@ catch [System.Net.Sockets.SocketException] {
     throw
 }
 finally { $portProbe.Stop() }
-if (-not $env:FLAGMAN_PASSWORD -or $env:FLAGMAN_PASSWORD.Length -lt 10) { throw 'Set FLAGMAN_PASSWORD (at least 10 characters) before starting.' }
 $localSdk = Join-Path (Get-Location) '.tools\dotnet\dotnet.exe'
 $sdk = if (Test-Path -LiteralPath $localSdk) { $localSdk } else { 'dotnet' }
 $env:DOTNET_CLI_TELEMETRY_OPTOUT = '1'
