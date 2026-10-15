@@ -743,7 +743,9 @@ input { transition: border-color var(--motion-micro) var(--motion-easeStandard),
   .waiter-cart-items { height: 100%; max-height: none; }
   .waiter-menu > .dish-grid { min-height: 100%; }
 }
-.order-request-grid { columns: 24rem 3; column-gap: var(--space-4); }
+.order-request-grid { display: grid; gap: var(--space-4); align-items: start; }
+.order-request-column { min-width: 0; display: flow-root; }
+.order-request-column > .order-request-card:last-child { margin-bottom: 0; }
 .order-request-card { break-inside: avoid; margin-bottom: var(--space-4); min-width: 0; overflow: hidden; border: 1px solid var(--semantic-border-default); border-radius: var(--radius-panel); background: var(--semantic-surface-card); }
 .order-request-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-4); background: var(--semantic-surface-raised); border-bottom: 1px solid var(--semantic-border-default); }
 .order-request-heading h3 { min-width: 0; margin: 0; font-size: var(--type-emphasis); overflow-wrap: anywhere; }

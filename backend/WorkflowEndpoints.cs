@@ -34,10 +34,8 @@ public static class WorkflowEndpoints
   }
   Inventory.Require(status is null or "all" or "submitted" or "ready" or "served" or "rejected" or "accepted" or "cancelled","Неизвестный статус заказа");
   if(status is not null and not "all")rows=rows.Where(x=>x.Status==status);
-  // Sort before pagination: oldest active work first, latest completed orders first.
-  rows=rows.OrderBy(x=>x.Status switch {"submitted"=>0,"ready"=>1,"served"=>2,"rejected"=>3,"accepted"=>4,_=>5})
-   .ThenBy(x=>x.Status is "submitted" or "ready"?x.CreatedAt:DateTimeOffset.MinValue)
-   .ThenByDescending(x=>x.Status is "submitted" or "ready"?DateTimeOffset.MinValue:x.CreatedAt).ThenBy(x=>x.Id);
+  // Keep chronological order consistent across roles and pagination.
+  rows=rows.OrderByDescending(x=>x.CreatedAt).ThenBy(x=>x.Id);
   return List(rows.Select(x=>OrderView(s,x,a)),page,size);
  }));
  api.MapGet("/procurement-requests/{id}",(string id,HttpContext c,Store st)=>st.Read(s=>{var a=AccessService.Current(s,c);AccessService.RequireRole(a,"manager","supplier");var r=s.ProcurementRequests.Find(x=>x.Id==id)??throw new DomainException("Заявка не найдена",404);AccessService.RequireOwner(a,r.SupplierId);return r;}));

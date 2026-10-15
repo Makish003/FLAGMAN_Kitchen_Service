@@ -1,3 +1,4 @@
+import {OrderCardGrid,newestFirst} from './OrderCardGrid';
 import {ChefHat,ShoppingBasket} from 'lucide-react';
 import {useEffect,useState} from 'react';
 import {OrderRequestCard} from './OrderRequestCard';
@@ -26,15 +27,15 @@ function OrderList({kitchen=false,administrator=false,dishes=[],actorId,timezone
   <div className="tabs" role="group" aria-label="Статус заказов">
    {[['all','Все статусы'],...orderGroups].map(([value,label])=><Button key={value} className={status===value?'selected':''} aria-pressed={status===value} onClick={()=>{setStatus(value);setPage(1);}}>{label}</Button>)}
   </div>
-  <p className="form-hint">Ожидающие заказы — сначала самые ранние, завершённые — сначала последние.{kitchen?' При нажатии «Готово» наличие проверяется повторно и ингредиенты списываются.':''}</p>
+  <p className="form-hint">Новые заказы — слева, более ранние — справа.{kitchen?' При нажатии «Готово» наличие проверяется повторно и ингредиенты списываются.':''}</p>
   {(list.error||error)&&<p role="alert" className="form-error">{list.error||error}</p>}
-  <div className="order-request-grid">{orderGroups.flatMap(([value])=>list.data?.items.filter(o=>o.status===value)??[]).map(o=><OrderRequestCard key={o.id} order={o} dishes={dishes} timezone={timezone} actions={(!kitchen&&o.status==='ready'&&(administrator||o.authorId===actorId)||(kitchen||administrator)&&o.status==='submitted')?<>
+  <OrderCardGrid>{newestFirst(list.data?.items??[]).map(o=><OrderRequestCard key={o.id} order={o} dishes={dishes} timezone={timezone} actions={(!kitchen&&o.status==='ready'&&(administrator||o.authorId===actorId)||(kitchen||administrator)&&o.status==='submitted')?<>
     {!kitchen&&o.status==='ready'&&(administrator||o.authorId===actorId)&&<Button className="button primary" disabled={busy} onClick={()=>run('/order-requests/'+o.id+'/serve',{expectedVersion:o.version})}>Подтвердить выдачу</Button>}
     {(kitchen||administrator)&&o.status==='submitted'&&<>
      <Button className="button secondary" disabled={busy} onClick={()=>setSelected(o)}>Отклонить заказ</Button>
      <Button className="button primary" disabled={busy} onClick={()=>run('/order-requests/'+o.id+'/decision',{expectedVersion:o.version,decision:'accept'})}>Готово</Button>
     </>}
-   </>:undefined}/>)}</div>
+   </>:undefined}/>)}</OrderCardGrid>
   {list.data&&!list.data.items.length&&<Empty text="Заказов пока нет"/>}
   <Pagination page={page} total={list.data?.total??0} size={list.data?.size??50} onPage={setPage}/>
   {selected&&<RejectOrder request={selected} refresh={list.refresh} onClose={()=>setSelected(undefined)}/>}
