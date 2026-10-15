@@ -27,7 +27,7 @@ builder.Services.Configure<ForwardedHeadersOptions>(o => {
     if (!string.IsNullOrWhiteSpace(proxy)) o.KnownProxies.Add(IPAddress.Parse(proxy));
 });
 var storeInstance = new Store(dbPath);
-if (storeInstance.Read(s=>s.Users.Count)==0 && (string.IsNullOrWhiteSpace(password)||password.Length<10)) throw new InvalidOperationException("Set FLAGMAN_PASSWORD (at least 10 characters) for the first manager bootstrap.");
+if (storeInstance.Read(s=>s.Users.Count)==0 && (string.IsNullOrWhiteSpace(password)||password.Length<10)) throw new InvalidOperationException("Set FLAGMAN_PASSWORD (at least 10 characters) for the first administrator bootstrap.");
 if (!demo && storeInstance.Metadata().DemoOffsetHours != 0) throw new InvalidOperationException("Demo clock detected. Use a separate, new production database; never reset existing inventory time.");
 if (demo && storeInstance.Read(Demo.NeedsEnrichment))
     storeInstance.Write(s => Demo.Enrich(s, s.Now(DateTimeOffset.UtcNow)));
@@ -80,7 +80,8 @@ app.Use(async (ctx,next)=>{
     var path=(ctx.Request.Path.Value??"").ToLowerInvariant();
     if(path.StartsWith("/api/")&&ctx.User.Identity?.IsAuthenticated==true) {
         var external=path is "/api/session" or "/api/logout" or "/api/events" or "/api/deliveries" or "/api/orders" || path.StartsWith("/api/supplier/")||path.StartsWith("/api/waiter/")||path.StartsWith("/api/cook/")||path.StartsWith("/api/procurement-requests")||path.StartsWith("/api/delivery-requests")||path.StartsWith("/api/order-requests")||path.StartsWith("/api/operations/");
-        if(!external&&!ctx.User.IsInRole("manager")){ctx.Response.StatusCode=403;await ctx.Response.WriteAsJsonAsync(new{error="Недостаточно прав"});return;}
+        var adminOnly=path is "/api/accounts" or "/api/demo" or "/api/generator" || path.StartsWith("/api/accounts/")||path.StartsWith("/api/keys/")||path.StartsWith("/api/demo/")||path.StartsWith("/api/generator/")||path.StartsWith("/api/history/generatorevents")||path.StartsWith("/api/history/eventlog");
+        if(adminOnly&&!ctx.User.IsInRole("admin")||!external&&!ctx.User.IsInRole("manager")&&!ctx.User.IsInRole("admin")){ctx.Response.StatusCode=403;await ctx.Response.WriteAsJsonAsync(new{error="Недостаточно прав"});return;}
     }
     await next();
 });
@@ -92,18 +93,18 @@ app.MapPost("/api/login", async (LoginInput input, HttpContext ctx) => {
     var account=storeInstance.Read(s=>AccessService.Login(s,input.Login,input.Password));
     if (account is null)
         return Results.Json(new { error = "Неверный пароль" }, statusCode: 401);
-    var sessionId=Guid.NewGuid().ToString("N");storeInstance.WriteOperation("audit","",s=>{s.Audit.Add(new(Inventory.Id(),"session.login",sessionId,DateTimeOffset.UtcNow,"restaurant"));return 0;});
+    var sessionId=Guid.NewGuid().ToString("N");storeInstance.WriteOperation("audit","",s=>{AccessService.Audit(s,new(account.Id,account.Role),"session.login",account.Id,s.Now(DateTimeOffset.UtcNow));return 0;});
     await ctx.SignInAsync(AccessService.Principal(account,CookieAuthenticationDefaults.AuthenticationScheme));
     return Results.Ok(new { account.Id, account.Name, account.Role, demo });
 }).RequireRateLimiting("login");
 var api = app.MapGroup("/api").RequireAuthorization();
 api.MapAccess();
 api.MapWorkflows();
-api.MapPost("/batches/{id}/write-off",(string id,HttpContext c,Store st)=>st.Write(s=>Inventory.WriteOffExpired(s,id,AccessService.Current(s,c),c.Request.Headers["Idempotency-Key"].ToString(),s.Now(DateTimeOffset.UtcNow))));
+api.MapPost("/batches/{id}/write-off",(string id,WriteOffInput input,HttpContext c,Store st)=>st.Write(s=>Inventory.WriteOff(s,id,input,AccessService.Current(s,c),c.Request.Headers["Idempotency-Key"].ToString(),s.Now(DateTimeOffset.UtcNow))));
 api.MapPut("/dishes/{id}/offer",(string id,OfferInput i,HttpContext c,Store st)=>st.Write(s=>OfferPublication.Set(s,id,i,AccessService.Current(s,c),s.Now(DateTimeOffset.UtcNow))));
 api.MapGet("/waiter/offers",(HttpContext c,Store st)=>st.Read(s=>{AccessService.RequireRole(AccessService.Actor(c),"manager","waiter");return OfferPublication.Build(s,s.Now(DateTimeOffset.UtcNow));}));
 api.MapGet("/offers/overrides",(Store st)=>st.Read(s=>s.OfferOverrides));
-api.MapGet("/session", (HttpContext ctx) => new { id=ctx.User.FindFirstValue(ClaimTypes.NameIdentifier),name = ctx.User.Identity!.Name,role=ctx.User.FindFirstValue(ClaimTypes.Role),timezone=storeInstance.Metadata().Settings.Timezone, demo });
+api.MapGet("/session", (HttpContext ctx) => new { id=ctx.User.FindFirstValue(ClaimTypes.NameIdentifier),name = ctx.User.Identity!.Name,role=ctx.User.FindFirstValue(ClaimTypes.Role),visiblePages=storeInstance.Read(s=>s.Users.Find(u=>u.Id==ctx.User.FindFirstValue(ClaimTypes.NameIdentifier))?.VisiblePages),timezone=storeInstance.Metadata().Settings.Timezone, demo });
 api.MapGet("/ops/status", () => {
     var directory=Environment.GetEnvironmentVariable("FLAGMAN_BACKUP_DIR")??Path.Combine(Path.GetDirectoryName(Path.GetFullPath(dbPath))!,"backups");
     DateTime? backup=Directory.Exists(directory)?Directory.GetFiles(directory,"*.db").Select(File.GetLastWriteTimeUtc).OrderDescending().Select(x=>(DateTime?)x).FirstOrDefault():null;
@@ -117,29 +118,29 @@ api.AddEndpointFilter(async (context,next) => {
     return await next(context);
 });
 api.MapGet("/operations/{scope}/{key}", (string scope, string key, HttpContext ctx, Store store) => { Inventory.Require(new[]{"order","delivery","procurement","procurement-response","procurement-cancel","delivery-acceptance","order-decision","order-serve","write-off"}.Contains(scope), "Неизвестная операция", 404); var actor=AccessService.Actor(ctx); AccessService.RequireRole(actor,scope=="order"?new[]{"manager","waiter"}:scope=="delivery"?new[]{"manager","supplier"}:scope=="procurement-response"?new[]{"supplier"}:scope=="order-decision"?new[]{"cook","manager"}:scope=="order-serve"?new[]{"waiter","manager"}:new[]{"manager"}); var result = store.Operation(WorkflowService.Scope(actor,scope), key); return result is null ? Results.NotFound(new { error = "Результат пока не найден. Повторите исходный запрос с прежним ключом." }) : Results.Content(result, "application/json"); });
-api.MapPost("/logout", async (HttpContext ctx,Store store) => { store.WriteOperation("audit","",s=>{s.Audit.Add(new(Inventory.Id(),"session.logout",ctx.User.FindFirst("sessionId")!.Value,DateTimeOffset.UtcNow,"restaurant"));return 0;});await ctx.SignOutAsync(); return Results.Ok(); });
+api.MapPost("/logout", async (HttpContext ctx,Store store) => { store.WriteOperation("audit","",s=>{AccessService.Audit(s,AccessService.Actor(ctx),"session.logout",AccessService.Actor(ctx).UserId,s.Now(DateTimeOffset.UtcNow));return 0;});await ctx.SignOutAsync(); return Results.Ok(); });
 api.MapGet("/snapshot", (Store store) => store.Dashboard());
 api.MapPost("/planning", (PlanningInput input,Store store,PlanningService planner)=>{var s=store.PlanningState();return planner.Calculate(s,s.Now(DateTimeOffset.UtcNow),input);});
 api.MapPost("/scenario", (ScenarioInput input,Store store)=>{var s=store.PlanningState();return ScenarioDemand.Calculate(s,s.Now(DateTimeOffset.UtcNow),input);});
 api.MapPost("/orders/preview", (OrderInput input,Store store)=>{var s=store.PlanningState();return PlanningService.PreviewOrder(s,s.Now(DateTimeOffset.UtcNow),input);});
 api.MapPost("/deliveries/preview", (DeliveryInput input,Store store)=>{var s=store.PlanningState();return PlanningService.PreviewDelivery(s,s.Now(DateTimeOffset.UtcNow),input);});
-api.MapPost("/products", (Product input, Store store) => store.WriteOperation("product", input.Id, s => Inventory.AddProduct(s, input, s.Now(DateTimeOffset.UtcNow))));
-api.MapPost("/dishes", (Dish input, HttpContext ctx, Store store) => store.WriteOperation("dish", input.Id, s => { var result=Inventory.SaveDish(s,input,s.Now(DateTimeOffset.UtcNow)); s.Audit.Add(new(Inventory.Id(),"recipe.saved",ctx.User.FindFirst("sessionId")!.Value,DateTimeOffset.UtcNow,input.Id));return result; }));
+api.MapPost("/products", (Product input, HttpContext ctx, Store store) => store.WriteOperation("product", input.Id, s => {s.EventActorId=AccessService.Actor(ctx).UserId;return Inventory.AddProduct(s, input, s.Now(DateTimeOffset.UtcNow));}));
+api.MapPost("/dishes", (Dish input, HttpContext ctx, Store store) => store.WriteOperation("dish", input.Id, s => { s.EventActorId=AccessService.Actor(ctx).UserId;var result=Inventory.SaveDish(s,input,s.Now(DateTimeOffset.UtcNow)); s.Audit.Add(new(Inventory.Id(),"recipe.saved",ctx.User.FindFirst("sessionId")!.Value,DateTimeOffset.UtcNow,input.Id));return result; }));
 api.MapGet("/analytics", (DateTimeOffset? from, DateTimeOffset? to, DateOnly? fromDate, DateOnly? toDate, string? days, Store store) => store.Analytics(from,to,fromDate,toDate,days));
 api.MapGet("/details/{entity}/{id}", (string entity,string id,Store store)=>store.Details(entity,id));
 api.MapPost("/archive/{entity}/{id}", (string entity,string id,HttpContext ctx,Store store)=>store.WriteOperation("archive",id,s=>{
  Inventory.Require(entity is "products" or "dishes","Неизвестный каталог",404);
  if(entity=="products"){ var p=Inventory.Product(s,id);Inventory.Require(!s.Dishes.Any(d=>!d.Archived&&d.Ingredients.Any(i=>i.ProductId==id)),"Сначала архивируйте блюда с этим продуктом",409);s.Products[s.Products.FindIndex(x=>x.Id==id)]=p with {Archived=true}; }
  else {var d=s.Dishes.Find(x=>x.Id==id)??throw new DomainException("Блюдо не найдено",404);s.Dishes[s.Dishes.FindIndex(x=>x.Id==id)]=d with {Archived=true};}
- s.Audit.Add(new(Inventory.Id(),"catalog.archived",ctx.User.FindFirst("sessionId")!.Value,DateTimeOffset.UtcNow,id));s.Emit("catalog.changed",s.Now(DateTimeOffset.UtcNow));return new {archived=true};
+ s.Audit.Add(new(Inventory.Id(),"catalog.archived",ctx.User.FindFirst("sessionId")!.Value,DateTimeOffset.UtcNow,id));s.Emit("catalog.archived",s.Now(DateTimeOffset.UtcNow),id,AccessService.Actor(ctx).UserId);return new {archived=true};
 }));
 api.MapGet("/history/{entity}", (string entity, int? page, int? size, string? q, string? status, string? sort, Store store) => store.History(entity,page??1,size??50,q,status,sort));
-api.MapPut("/settings", (Settings settings, HttpContext ctx, Store store) => { Inventory.ValidateSettings(settings); return store.WriteOperation("settings", "", s => { s.Settings = settings; s.Audit.Add(new(Inventory.Id(),"settings.changed",ctx.User.FindFirst("sessionId")!.Value,DateTimeOffset.UtcNow,"restaurant")); s.Emit("settings.changed", s.Now(DateTimeOffset.UtcNow)); return settings; }); });
+api.MapPut("/settings", (Settings settings, HttpContext ctx, Store store) => { Inventory.ValidateSettings(settings); return store.WriteOperation("settings", "", s => { s.Settings = settings; s.Audit.Add(new(Inventory.Id(),"settings.changed",ctx.User.FindFirst("sessionId")!.Value,DateTimeOffset.UtcNow,"restaurant")); s.Emit("settings.changed", s.Now(DateTimeOffset.UtcNow),"restaurant",AccessService.Actor(ctx).UserId); return settings; }); });
 api.MapPost("/demo/seed", (Store store) => { Inventory.Require(demo, "Демо-режим отключён", 403); return store.Write(s => { Demo.Seed(s, s.Now(DateTimeOffset.UtcNow)); return new { seeded = true }; }); });
 api.MapPost("/demo/time", (TimeInput input, Store store) => { Inventory.Require(demo, "Демо-режим отключён", 403); Inventory.Require(input.Hours is > 0 and <= 720, "Сдвиг: больше 0, не более 720 часов"); return store.Write(s => { s.DemoOffsetHours += input.Hours; var now = s.Now(DateTimeOffset.UtcNow); Inventory.Expire(s, now); s.Emit("time.changed", now); return new { now }; }); });
 api.MapGet("/generator", (Generator generator) => generator.Status);
-api.MapPost("/generator/start", (GeneratorInput input, Generator generator) => { Inventory.Require(demo, "Генератор доступен только в демо", 403); generator.Start(input); return generator.Status; });
-api.MapPost("/generator/stop", (Generator generator) => { generator.Stop(); return generator.Status; });
+api.MapPost("/generator/start", (GeneratorInput input, Generator generator,HttpContext ctx,Store store) => { Inventory.Require(demo, "Генератор доступен только в демо", 403); generator.Start(input);store.Write(s=>{AccessService.Audit(s,AccessService.Actor(ctx),"generator.started","restaurant",s.Now(DateTimeOffset.UtcNow));return 0;}); return generator.Status; });
+api.MapPost("/generator/stop", (Generator generator,HttpContext ctx,Store store) => { generator.Stop();store.Write(s=>{AccessService.Audit(s,AccessService.Actor(ctx),"generator.stopped","restaurant",s.Now(DateTimeOffset.UtcNow));return 0;}); return generator.Status; });
 api.MapGet("/events", async (HttpContext ctx, Store store) => {
     Interlocked.Increment(ref Telemetry.SseClients);
     try {

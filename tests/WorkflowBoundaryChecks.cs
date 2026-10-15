@@ -18,5 +18,27 @@ public static class WorkflowBoundaryChecks
  Test("Supplier_manufacture_and_shelf_metadata_survive_late_acceptance",()=>{var s=Fixture();var manufactured=Now.AddMinutes(-30);var d=WorkflowService.SubmitDelivery(s,new("manufactured",[new("p",1,"kg",ShelfLifeHours:2,ManufacturedAt:manufactured)]),Supplier,"mfg",Now);WorkflowChecks.Check(d.Items.Single().ManufacturedAt==manufactured&&d.Items.Single().ShelfLifeHours==2,"Supplier metadata lost");WorkflowService.AcceptDelivery(s,d.Id,new(1,[new(d.Items[0].Id,1)]),Manager,"mfg-accept",Now.AddHours(1));var batch=s.Batches.Single();WorkflowChecks.Check(batch.ManufacturedAt==manufactured&&batch.ShelfLifeHours==2&&batch.ExpiresAt==Now.AddMinutes(90),"Acceptance lost metadata or extended expiry");});
  Test("Concurrent_supplier_responses_and_delivery_decisions_finalize_once",()=>{var path=Path.Combine(Path.GetTempPath(),"flagman-document-race-"+Guid.NewGuid()+".db");var st=new Store(path);st.Write(s=>{var f=Fixture();s.Products=f.Products;s.Dishes=f.Dishes;s.Users=f.Users;return 0;});var p=st.Write(s=>WorkflowService.CreateProcurement(s,new("s",[new("t","p",1,"kg")]),Manager,"p",Now));var response=new ProcurementResponseInput(1,[new("t",1,Now.AddHours(2))]);var outcomes=Enumerable.Range(0,2).Select(i=>Task.Run(()=>{try{new Store(path).Write(s=>WorkflowService.RespondProcurement(s,p.Id,response,Supplier,"r"+i,Now));return 200;}catch(DomainException e){return e.Status;}})).ToArray();Task.WaitAll(outcomes);WorkflowChecks.Check(outcomes.Select(x=>x.Result).Order().SequenceEqual(new[]{200,409}),"Concurrent responses created duplicate delivery");var d=st.Read(s=>s.DeliveryRequests.Single());WorkflowChecks.Check(st.Read(s=>s.Batches.Count)==0,"Response moved stock");var acceptance=new DeliveryAcceptanceInput(1,[new(d.Items[0].Id,1)]);outcomes=Enumerable.Range(0,2).Select(i=>Task.Run(()=>{try{new Store(path).Write(s=>WorkflowService.AcceptDelivery(s,d.Id,acceptance,Manager,"a"+i,Now));return 200;}catch(DomainException e){return e.Status;}})).ToArray();Task.WaitAll(outcomes);WorkflowChecks.Check(outcomes.Select(x=>x.Result).Order().SequenceEqual(new[]{200,409}),"Concurrent acceptance finalized twice");WorkflowChecks.Check(st.Read(s=>s.Deliveries.Count==1&&s.Batches.Single().RemainingQuantity==1000&&s.Movements.Count==1),"Duplicate receipt");st.VerifyIntegrity();});
  Test("Expiry_status_lag_excludes_old_physical_expired_stock",()=>{var s=Fixture();Stock(s);Flagman.Monitor.RefreshExpiryStatus(s,Now.AddHours(1));var at=Now.AddDays(3).AddHours(1);Inventory.Deliver(s,new("late",[new("p",1,"g",at.AddMilliseconds(-500))]),"late",at.AddSeconds(-1));Flagman.Monitor.RefreshExpiryStatus(s,at);WorkflowChecks.Check(Math.Abs(Telemetry.LastExpiryLagMs-500)<0.001,"Old physical expiry inflated status lag");Flagman.Monitor.RefreshExpiryStatus(s,at.AddSeconds(1));WorkflowChecks.Check(Math.Abs(Telemetry.LastExpiryLagMs-500)<0.001&&s.Batches.Sum(b=>b.RemainingQuantity)==501&&s.Movements.Count==2,"Monitor changed stock or recorded old expiry again");});
+ Test("Any_batch_writeoff_requires_reason_and_preserves_retry_after_restart",()=>{
+  var path=Path.Combine(Path.GetTempPath(),"flagman-writeoff-"+Guid.NewGuid()+".db");var st=new Store(path);
+  st.Write(s=>{var f=Fixture();s.Products=f.Products;s.Dishes=f.Dishes;Stock(s);return 0;});
+  var id=st.Read(s=>s.Batches.Single().Id);
+  foreach(var reason in new string?[]{null,"", "  ",new string('x',501)})Error(()=>st.Write(s=>Inventory.WriteOff(s,id,new(reason),Manager,"bad",Now)),400);
+  Error(()=>st.Write(s=>Inventory.WriteOff(s,id,new("Порча"),Waiter,"denied",Now)),403);
+  WorkflowChecks.Check(st.Read(s=>s.Batches.Single().RemainingQuantity)==500,"Invalid writeoff changed stock");
+  var written=st.Write(s=>Inventory.WriteOff(s,id,new("  Повреждена упаковка  "),Manager,"write",Now));
+  var restarted=new Store(path);
+  WorkflowChecks.Check(restarted.Write(s=>Inventory.WriteOff(s,id,new("Повреждена упаковка"),Manager,"write",Now)).MovementId==written.MovementId,"Writeoff retry changed movement");
+  Error(()=>restarted.Write(s=>Inventory.WriteOff(s,id,new("Другая причина"),Manager,"write",Now)),409);
+  Error(()=>restarted.Write(s=>Inventory.WriteOff(s,id,new("Порча"),Manager,"other",Now)),409);
+  restarted.Read(s=>{var m=s.Movements.Single(m=>m.Kind=="write_off");WorkflowChecks.Check(m.Reason=="Повреждена упаковка"&&m.ActorId==Manager.UserId&&m.Quantity==-500&&Inventory.BatchStatus(s,s.Batches.Single(),Now)=="written_off","Missing writeoff reason, author or quantity");return 0;});restarted.VerifyIntegrity();
+ });
+ Test("Writeoff_removes_unusable_reservation_without_consuming_other_stock",()=>{
+  var s=Fixture();Stock(s);var order=WorkflowService.SubmitOrder(s,new([new("d",1)]),Waiter,"reserved",Now);var id=s.Batches.Single().Id;
+  WorkflowChecks.Check(Inventory.Reserved(s).GetValueOrDefault(id)==500,"Order not reserved");
+  Inventory.WriteOff(s,id,new("Порча"),Manager,"write",Now);
+  WorkflowChecks.Check(Inventory.Reserved(s).GetValueOrDefault(id)==0&&s.OrderRequests.Single().Status=="submitted","Written off stock remains reserved");
+  var result=WorkflowService.DecideOrder(s,order.Id,new(1,"accept"),new("cook","cook"),"ready",Now);
+  WorkflowChecks.Check(result.Status=="rejected"&&s.Movements.Count(m=>m.Kind=="order")==0&&s.Batches.Single().RemainingQuantity==0,"Cook consumed written off stock");
+ });
  return count;}
 }

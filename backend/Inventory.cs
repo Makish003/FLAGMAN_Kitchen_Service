@@ -37,7 +37,7 @@ public static class Inventory
         Require(new[] { "g", "ml", "pcs" }.Contains(product.Unit), "Базовая единица: g, ml или pcs");
         Require(product.WarningHours > 0 && product.WarningHours <= 8760, "Некорректный порог предупреждения");
         Require(s.Products.All(x => x.Id != product.Id), "Продукт с таким ID уже существует", 409);
-        s.Products.Add(product); s.Emit("catalog.changed", now); return product;
+        s.Products.Add(product); s.Emit("catalog.changed", now,product.Id,summary:product.Name); return product;
     }
     public static Dish SaveDish(State s, Dish dish, DateTimeOffset now)
     {
@@ -47,7 +47,7 @@ public static class Inventory
         Require(dish.Ingredients.Select(x => x.ProductId).Distinct().Count() == dish.Ingredients.Count, "Ингредиент повторяется");
         foreach (var ingredient in dish.Ingredients) { Require(!Product(s, ingredient.ProductId).Archived,"Продукт архивирован"); ValidateQuantity(ingredient.Quantity); }
         Require(!s.Orders.Any(o => o.Status == "accepted" && o.Items.Any(i => i.DishId == dish.Id)), "Рецепт проданного блюда неизменяем; создайте новую версию", 409);
-        s.Dishes.RemoveAll(x => x.Id == dish.Id); s.Dishes.Add(dish); s.Emit("recipe.changed", now); return dish;
+        s.Dishes.RemoveAll(x => x.Id == dish.Id); s.Dishes.Add(dish); s.Emit("recipe.changed", now,dish.Id,summary:dish.Name); return dish;
     }
     public static Delivery Deliver(State s, DeliveryInput input, string key, DateTimeOffset now)
         => Once(s, "delivery", key, input, () =>
@@ -88,7 +88,7 @@ public static class Inventory
             var delivery = new Delivery(id, input.Number, created.ToUniversalTime(), received.ToUniversalTime(), batches.Select(x => x.Id).ToList());
             s.Deliveries.Add(delivery); s.Batches.AddRange(batches);
             foreach (var b in batches) s.Movements.Add(new(Id(), b.Id, b.ProductId, b.InitialQuantity, "receipt", null, now));
-            s.Emit("delivery.created", now); return delivery;
+            s.Emit("delivery.created", now,delivery.Id,summary:delivery.Number); return delivery;
         });
     public static Dictionary<string,decimal> Reserved(State s) => s.OrderRequests.Where(r=>r.Status=="submitted")
         .SelectMany(r=>r.Reservations??[]).GroupBy(r=>r.BatchId).ToDictionary(g=>g.Key,g=>g.Sum(r=>r.Quantity));
@@ -130,7 +130,7 @@ public static class Inventory
                 foreach (var shortage in shortages) s.Shortages.Add(new(Id(), order.Id, now, shortage));
             else
                 foreach (var need in needs.OrderBy(x => x.Key, StringComparer.Ordinal)) Consume(s, need.Key, need.Value, now, order.Id);
-            s.Emit("order." + order.Status, now); return order;
+            s.Emit("order." + order.Status, now,order.Id); return order;
         });
     public static void Consume(State s, string productId, decimal amount, DateTimeOffset now, string? orderId = null)
     {
@@ -148,16 +148,33 @@ public static class Inventory
         => b.RemainingQuantity==0 ? (s.Movements.Any(m=>m.BatchId==b.Id&&m.Kind is "expiry" or "write_off") ? "written_off" : "consumed") : b.ExpiresAt<=now ? "expired" : b.ExpiresAt<=now.AddHours((double)Math.Min(Product(s,b.ProductId).WarningHours,s.Settings.WarningHours)) ? "warning" : "fresh";
     public static int Expire(State s,DateTimeOffset now)
     {
+        var known=s.WarningSignature.Split(',',StringSplitOptions.RemoveEmptyEntries).ToHashSet();
+        foreach(var b in s.Batches.Where(b=>b.RemainingQuantity>0)){
+            var status=BatchStatus(s,b,now);
+            if((status is "warning" or "expired")&&!known.Contains(b.Id+":"+status))s.Emit("batch."+status,now,b.Id,summary:Product(s,b.ProductId).Name);
+        }
         var signature=string.Join(",",s.Batches.Where(b=>b.RemainingQuantity>0).Select(b=>new{b.Id,Status=BatchStatus(s,b,now)}).Where(b=>b.Status is "warning" or "expired").OrderBy(b=>b.Id).Select(b=>b.Id+":"+b.Status));
         if(signature!=s.WarningSignature){s.WarningSignature=signature;s.Emit("time.changed",now);}return 0;
     }
     public static WriteOffResult WriteOffExpired(State s,string batchId,Actor actor,string key,DateTimeOffset now)
     {
         AccessService.RequireRole(actor,"manager");
-        return Once(s,WorkflowService.Scope(actor,"write-off"),key,new{batchId},()=>{
+        var b=s.Batches.Find(x=>x.Id==batchId)??throw new DomainException("Партия не найдена",404);
+        Require(b.ExpiresAt<=now,"Можно списать только остаток просроченной партии",409);
+        return WriteOff(s,batchId,new("expired"),actor,key,now);
+    }
+    public static WriteOffResult WriteOff(State s,string batchId,WriteOffInput input,Actor actor,string key,DateTimeOffset now)
+    {
+        AccessService.RequireRole(actor,"manager");
+        var reason=input.Reason?.Trim();
+        Require(reason is {Length:>0 and <=500},"Укажите причину списания (до 500 символов)");
+        return Once(s,WorkflowService.Scope(actor,"write-off"),key,new{batchId,reason},()=>{
             var b=s.Batches.Find(x=>x.Id==batchId)??throw new DomainException("Партия не найдена",404);
-            Require(b.RemainingQuantity>0&&b.ExpiresAt<=now,"Можно списать только остаток просроченной партии",409);
-            var m=new Movement(Id(),b.Id,b.ProductId,-b.RemainingQuantity,"write_off",null,now,actor.UserId,"expired");s.Movements.Add(m);s.Batches[s.Batches.IndexOf(b)]=b with{RemainingQuantity=0};
+            Require(b.RemainingQuantity>0,"В партии нет остатка для списания",409);
+            var m=new Movement(Id(),b.Id,b.ProductId,-b.RemainingQuantity,"write_off",null,now,actor.UserId,reason);s.Movements.Add(m);s.Batches[s.Batches.IndexOf(b)]=b with{RemainingQuantity=0};
+            // Written-off stock cannot remain reserved. Keep requests for the cook to resolve.
+            foreach(var order in s.OrderRequests.Where(r=>r.Status=="submitted"&&r.Reservations?.Any(x=>x.BatchId==batchId)==true).ToList())
+                s.OrderRequests[s.OrderRequests.IndexOf(order)]=order with{Reservations=order.Reservations!.Where(x=>x.BatchId!=batchId).ToList()};
             AccessService.Audit(s,actor,"batch.written-off",batchId,now);return new WriteOffResult(batchId,b.RemainingQuantity,m.Id);
         });
     }

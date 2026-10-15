@@ -12,7 +12,7 @@ public record Order(string Id, DateTimeOffset CreatedAt, string Status, List<Ord
 public record Movement(string Id, string BatchId, string ProductId, decimal Quantity, string Kind, string? OrderId, DateTimeOffset At, string? ActorId = null, string? Reason = null);
 public record Shortage(string ProductId, string ProductName, string Unit, decimal Requested, decimal Available, decimal Missing, List<string> DishIds);
 public record ShortageEvent(string Id, string OrderId, DateTimeOffset At, Shortage Detail);
-public record DomainEvent(long Id, string Type, DateTimeOffset At);
+public record DomainEvent(long Id, string Type, DateTimeOffset At, string? EntityId=null, string? ActorId=null, string? Summary=null, int DetailsVersion=0);
 public record RequestRecord(string Id, string Hash, string ResultJson);
 public record AuditEntry(string Id, string Action, string SessionId, DateTimeOffset At, string EntityId);
 public record DeliveryLine(string ProductId, decimal Quantity, string Unit, DateTimeOffset? ExpiresAt = null,
@@ -52,6 +52,11 @@ public class State
     public decimal DemoOffsetHours { get; set; }
     public long Revision { get; set; }
     public DateTimeOffset Now(DateTimeOffset realNow) => (TransactionRealNow ?? realNow).AddHours((double)DemoOffsetHours);
-    public void Emit(string type, DateTimeOffset now) => Events.Add(new(++Revision, type, now));
+    [System.Text.Json.Serialization.JsonIgnore] public string? EventActorId { get; set; }
+    public void Emit(string type, DateTimeOffset now, string? entityId=null, string? actorId=null, string? summary=null)
+    {
+        var description = EventDetails.Describe(this, type, entityId, now) ?? summary ?? "Изменения сохранены в журнале ресторана.";
+        Events.Add(new(++Revision, type, now, entityId, actorId??EventActorId, description, 1));
+    }
 }
 public class DomainException(string message, int status = 400) : Exception(message) { public int Status { get; } = status; }

@@ -1,0 +1,690 @@
+info: Microsoft.Hosting.Lifetime[14]
+      Now listening on: http://127.0.0.1:50182
+info: Microsoft.Hosting.Lifetime[0]
+      Application started. Press Ctrl+C to shut down.
+info: Microsoft.Hosting.Lifetime[0]
+      Hosting environment: Development
+info: Microsoft.Hosting.Lifetime[0]
+      Content root path: D:\Progs\hack\backend
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:50182/api/ready - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/ready'
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/ready'
+info: Flagman.Api[0]
+      Request 0HNPASCFSA3QV:00000001 GET /api/ready 200 29
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:50182/api/ready - 200 - application/json;+charset=utf-8 253.6511ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 POST http://127.0.0.1:50182/api/login - application/json 69
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: POST /api/login'
+info: Microsoft.AspNetCore.Authentication.Cookies.CookieAuthenticationHandler[10]
+      AuthenticationScheme: Cookies signed in.
+info: Microsoft.AspNetCore.Http.Result.OkObjectResult[1]
+      Setting HTTP status code 200.
+info: Microsoft.AspNetCore.Http.Result.OkObjectResult[3]
+      Writing value of type '<>f__AnonymousType27`4' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: POST /api/login'
+info: Flagman.Api[0]
+      Request 0HNPASCFSA3R0:00000001 POST /api/login 200 245
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 POST http://127.0.0.1:50182/api/login - 200 - application/json;+charset=utf-8 251.9446ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:50182/api/session - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/session'
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/session'
+info: Flagman.Api[0]
+      Request 0HNPASCFSA3R0:00000002 GET /api/session 200 17
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:50182/api/session - 200 - application/json;+charset=utf-8 17.3169ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 POST http://127.0.0.1:50182/api/accounts/44b2a7167cf349f08edc82d7e8578e5b/keys - - 0
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: POST /api/accounts/{id}/keys'
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: POST /api/accounts/{id}/keys'
+info: Flagman.Api[0]
+      Request 0HNPASCFSA3R0:00000003 POST /api/accounts/44b2a7167cf349f08edc82d7e8578e5b/keys 200 33
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 POST http://127.0.0.1:50182/api/accounts/44b2a7167cf349f08edc82d7e8578e5b/keys - 200 - application/json;+charset=utf-8 33.6307ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 POST http://127.0.0.1:50182/api/accounts - application/json 124
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: POST /api/accounts'
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: POST /api/accounts'
+info: Flagman.Api[0]
+      Request 0HNPASCFSA3R0:00000004 POST /api/accounts 200 148
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 POST http://127.0.0.1:50182/api/accounts - 200 - application/json;+charset=utf-8 148.9190ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 POST http://127.0.0.1:50182/api/accounts/1b07d11688904e2eaec3db1f9ac3de0a/keys - - 0
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: POST /api/accounts/{id}/keys'
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: POST /api/accounts/{id}/keys'
+info: Flagman.Api[0]
+      Request 0HNPASCFSA3R0:00000005 POST /api/accounts/1b07d11688904e2eaec3db1f9ac3de0a/keys 200 29
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 POST http://127.0.0.1:50182/api/accounts/1b07d11688904e2eaec3db1f9ac3de0a/keys - 200 - application/json;+charset=utf-8 30.0684ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 POST http://127.0.0.1:50182/api/accounts - application/json 124
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: POST /api/accounts'
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: POST /api/accounts'
+info: Flagman.Api[0]
+      Request 0HNPASCFSA3R0:00000006 POST /api/accounts 200 115
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 POST http://127.0.0.1:50182/api/accounts - 200 - application/json;+charset=utf-8 115.7891ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 POST http://127.0.0.1:50182/api/accounts/35c27bf91a2845069d5142bf60708798/keys - - 0
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: POST /api/accounts/{id}/keys'
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: POST /api/accounts/{id}/keys'
+info: Flagman.Api[0]
+      Request 0HNPASCFSA3R0:00000007 POST /api/accounts/35c27bf91a2845069d5142bf60708798/keys 200 31
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 POST http://127.0.0.1:50182/api/accounts/35c27bf91a2845069d5142bf60708798/keys - 200 - application/json;+charset=utf-8 32.1484ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 POST http://127.0.0.1:50182/api/accounts - application/json 118
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: POST /api/accounts'
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: POST /api/accounts'
+info: Flagman.Api[0]
+      Request 0HNPASCFSA3R0:00000008 POST /api/accounts 200 140
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 POST http://127.0.0.1:50182/api/accounts - 200 - application/json;+charset=utf-8 140.2535ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 POST http://127.0.0.1:50182/api/accounts/06501dd25df44280ba07bfe14bcce9a8/keys - - 0
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: POST /api/accounts/{id}/keys'
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: POST /api/accounts/{id}/keys'
+info: Flagman.Api[0]
+      Request 0HNPASCFSA3R0:00000009 POST /api/accounts/06501dd25df44280ba07bfe14bcce9a8/keys 200 35
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 POST http://127.0.0.1:50182/api/accounts/06501dd25df44280ba07bfe14bcce9a8/keys - 200 - application/json;+charset=utf-8 35.5706ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 POST http://127.0.0.1:50182/api/accounts - application/json 112
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: POST /api/accounts'
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: POST /api/accounts'
+info: Flagman.Api[0]
+      Request 0HNPASCFSA3R0:0000000A POST /api/accounts 200 130
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 POST http://127.0.0.1:50182/api/accounts - 200 - application/json;+charset=utf-8 130.8677ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 POST http://127.0.0.1:50182/api/accounts/0e366c93ba64466e99239d6c6dd6486f/keys - - 0
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: POST /api/accounts/{id}/keys'
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: POST /api/accounts/{id}/keys'
+info: Flagman.Api[0]
+      Request 0HNPASCFSA3R0:0000000B POST /api/accounts/0e366c93ba64466e99239d6c6dd6486f/keys 200 23
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 POST http://127.0.0.1:50182/api/accounts/0e366c93ba64466e99239d6c6dd6486f/keys - 200 - application/json;+charset=utf-8 24.1262ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 POST http://127.0.0.1:50182/api/products - application/json 61
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: POST /api/products'
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: POST /api/products'
+info: Flagman.Api[0]
+      Request 0HNPASCFSA3R0:0000000C POST /api/products 200 34
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 POST http://127.0.0.1:50182/api/products - 200 - application/json;+charset=utf-8 34.5507ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 POST http://127.0.0.1:50182/api/products - application/json 62
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: POST /api/products'
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: POST /api/products'
+info: Flagman.Api[0]
+      Request 0HNPASCFSA3R0:0000000D POST /api/products 200 25
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 POST http://127.0.0.1:50182/api/products - 200 - application/json;+charset=utf-8 25.6252ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 POST http://127.0.0.1:50182/api/dishes - application/json 128
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: POST /api/dishes'
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: POST /api/dishes'
+info: Flagman.Api[0]
+      Request 0HNPASCFSA3R0:0000000E POST /api/dishes 200 43
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 POST http://127.0.0.1:50182/api/dishes - 200 - application/json;+charset=utf-8 43.2121ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:50182/api/snapshot - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/snapshot'
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/snapshot'
+info: Flagman.Api[0]
+      Request 0HNPASCFSA3R0:0000000F GET /api/snapshot 200 102
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:50182/api/snapshot - 200 - application/json;+charset=utf-8 102.9268ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 POST http://127.0.0.1:50182/api/deliveries - application/json 119
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: POST /api/deliveries'
+info: Microsoft.AspNetCore.Http.Result.JsonResult[1]
+      Setting HTTP status code 201.
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]
+      Writing value of type 'DeliveryRequest' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: POST /api/deliveries'
+info: Flagman.Api[0]
+      Request 0HNPASCFSA3R0:00000010 POST /api/deliveries 201 62
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 POST http://127.0.0.1:50182/api/deliveries - 201 - application/json;+charset=utf-8 62.4884ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 POST http://127.0.0.1:50182/api/delivery-requests/ea994cab5ca74ca392fdeb809a24b48e/acceptance - application/json 100
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: POST /api/delivery-requests/{id}/acceptance'
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: POST /api/delivery-requests/{id}/acceptance'
+info: Flagman.Api[0]
+      Request 0HNPASCFSA3R0:00000011 POST /api/delivery-requests/ea994cab5ca74ca392fdeb809a24b48e/acceptance 200 60
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 POST http://127.0.0.1:50182/api/delivery-requests/ea994cab5ca74ca392fdeb809a24b48e/acceptance - 200 - application/json;+charset=utf-8 60.2387ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 POST http://127.0.0.1:50182/api/orders - application/json 48
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: POST /api/orders'
+info: Microsoft.AspNetCore.Http.Result.JsonResult[1]
+      Setting HTTP status code 201.
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]
+      Writing value of type 'OrderRequest' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: POST /api/orders'
+info: Flagman.Api[0]
+      Request 0HNPASCFSA3R0:00000012 POST /api/orders 201 63
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 POST http://127.0.0.1:50182/api/orders - 201 - application/json;+charset=utf-8 63.5840ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 POST http://127.0.0.1:50182/api/demo/time - application/json 12
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: POST /api/demo/time'
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: POST /api/demo/time'
+info: Flagman.Api[0]
+      Request 0HNPASCFSA3R0:00000013 POST /api/demo/time 200 36
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 POST http://127.0.0.1:50182/api/demo/time - 200 - application/json;+charset=utf-8 36.2945ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 POST http://127.0.0.1:50182/api/order-requests/54b153ea75d443eaa936a735db90fc14/decision - application/json 41
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: POST /api/order-requests/{id}/decision'
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: POST /api/order-requests/{id}/decision'
+info: Flagman.Api[0]
+      Request 0HNPASCFSA3R0:00000014 POST /api/order-requests/54b153ea75d443eaa936a735db90fc14/decision 200 75
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 POST http://127.0.0.1:50182/api/order-requests/54b153ea75d443eaa936a735db90fc14/decision - 200 - application/json;+charset=utf-8 76.1680ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 POST http://127.0.0.1:50182/api/accounts - application/json 124
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: POST /api/accounts'
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: POST /api/accounts'
+info: Flagman.Api[0]
+      Request 0HNPASCFSA3R0:00000015 POST /api/accounts 200 128
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 POST http://127.0.0.1:50182/api/accounts - 200 - application/json;+charset=utf-8 129.0365ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 POST http://127.0.0.1:50182/api/accounts/c5eaf3757c074458b9946226c0bec4df/keys - - 0
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: POST /api/accounts/{id}/keys'
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: POST /api/accounts/{id}/keys'
+info: Flagman.Api[0]
+      Request 0HNPASCFSA3R0:00000016 POST /api/accounts/c5eaf3757c074458b9946226c0bec4df/keys 200 38
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 POST http://127.0.0.1:50182/api/accounts/c5eaf3757c074458b9946226c0bec4df/keys - 200 - application/json;+charset=utf-8 38.4051ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 POST http://127.0.0.1:50182/api/accounts - application/json 124
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: POST /api/accounts'
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: POST /api/accounts'
+info: Flagman.Api[0]
+      Request 0HNPASCFSA3R0:00000017 POST /api/accounts 200 144
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 POST http://127.0.0.1:50182/api/accounts - 200 - application/json;+charset=utf-8 144.7874ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 POST http://127.0.0.1:50182/api/accounts/c73a2d4e292d4c1d80f0b48831e85230/keys - - 0
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: POST /api/accounts/{id}/keys'
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: POST /api/accounts/{id}/keys'
+info: Flagman.Api[0]
+      Request 0HNPASCFSA3R0:00000018 POST /api/accounts/c73a2d4e292d4c1d80f0b48831e85230/keys 200 35
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 POST http://127.0.0.1:50182/api/accounts/c73a2d4e292d4c1d80f0b48831e85230/keys - 200 - application/json;+charset=utf-8 36.0861ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 POST http://127.0.0.1:50182/api/accounts - application/json 118
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: POST /api/accounts'
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: POST /api/accounts'
+info: Flagman.Api[0]
+      Request 0HNPASCFSA3R0:00000019 POST /api/accounts 200 151
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 POST http://127.0.0.1:50182/api/accounts - 200 - application/json;+charset=utf-8 151.8471ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 POST http://127.0.0.1:50182/api/accounts/33073d41f5e04521b655fcf7d6c8693e/keys - - 0
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: POST /api/accounts/{id}/keys'
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: POST /api/accounts/{id}/keys'
+info: Flagman.Api[0]
+      Request 0HNPASCFSA3R0:0000001A POST /api/accounts/33073d41f5e04521b655fcf7d6c8693e/keys 200 37
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 POST http://127.0.0.1:50182/api/accounts/33073d41f5e04521b655fcf7d6c8693e/keys - 200 - application/json;+charset=utf-8 37.9514ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 POST http://127.0.0.1:50182/api/accounts - application/json 112
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: POST /api/accounts'
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: POST /api/accounts'
+info: Flagman.Api[0]
+      Request 0HNPASCFSA3R0:0000001B POST /api/accounts 200 144
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 POST http://127.0.0.1:50182/api/accounts - 200 - application/json;+charset=utf-8 144.9727ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 POST http://127.0.0.1:50182/api/accounts/9f2aea64b7ce4f21a4bb8b6fde64219c/keys - - 0
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: POST /api/accounts/{id}/keys'
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: POST /api/accounts/{id}/keys'
+info: Flagman.Api[0]
+      Request 0HNPASCFSA3R0:0000001C POST /api/accounts/9f2aea64b7ce4f21a4bb8b6fde64219c/keys 200 37
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 POST http://127.0.0.1:50182/api/accounts/9f2aea64b7ce4f21a4bb8b6fde64219c/keys - 200 - application/json;+charset=utf-8 37.9384ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 POST http://127.0.0.1:50182/api/products - application/json 61
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: POST /api/products'
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: POST /api/products'
+info: Flagman.Api[0]
+      Request 0HNPASCFSA3R0:0000001D POST /api/products 200 38
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 POST http://127.0.0.1:50182/api/products - 200 - application/json;+charset=utf-8 38.9970ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 POST http://127.0.0.1:50182/api/products - application/json 62
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: POST /api/products'
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: POST /api/products'
+info: Flagman.Api[0]
+      Request 0HNPASCFSA3R0:0000001E POST /api/products 200 37
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 POST http://127.0.0.1:50182/api/products - 200 - application/json;+charset=utf-8 37.9277ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 POST http://127.0.0.1:50182/api/dishes - application/json 128
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: POST /api/dishes'
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: POST /api/dishes'
+info: Flagman.Api[0]
+      Request 0HNPASCFSA3R0:0000001F POST /api/dishes 200 31
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 POST http://127.0.0.1:50182/api/dishes - 200 - application/json;+charset=utf-8 31.1168ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:50182/api/snapshot - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/snapshot'
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/snapshot'
+info: Flagman.Api[0]
+      Request 0HNPASCFSA3R0:00000020 GET /api/snapshot 200 18
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:50182/api/snapshot - 200 - application/json;+charset=utf-8 19.2581ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 POST http://127.0.0.1:50182/api/deliveries - application/json 120
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: POST /api/deliveries'
+info: Microsoft.AspNetCore.Http.Result.JsonResult[1]
+      Setting HTTP status code 201.
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]
+      Writing value of type 'DeliveryRequest' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: POST /api/deliveries'
+info: Flagman.Api[0]
+      Request 0HNPASCFSA3R0:00000021 POST /api/deliveries 201 32
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 POST http://127.0.0.1:50182/api/deliveries - 201 - application/json;+charset=utf-8 32.1720ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 POST http://127.0.0.1:50182/api/delivery-requests/aff1536359584b65974f0e101c5c64ef/acceptance - application/json 101
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: POST /api/delivery-requests/{id}/acceptance'
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: POST /api/delivery-requests/{id}/acceptance'
+info: Flagman.Api[0]
+      Request 0HNPASCFSA3R0:00000022 POST /api/delivery-requests/aff1536359584b65974f0e101c5c64ef/acceptance 200 111
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 POST http://127.0.0.1:50182/api/delivery-requests/aff1536359584b65974f0e101c5c64ef/acceptance - 200 - application/json;+charset=utf-8 111.7941ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 POST http://127.0.0.1:50182/api/orders - application/json 48
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: POST /api/orders'
+info: Microsoft.AspNetCore.Http.Result.JsonResult[1]
+      Setting HTTP status code 201.
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]
+      Writing value of type 'OrderRequest' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: POST /api/orders'
+info: Flagman.Api[0]
+      Request 0HNPASCFSA3R0:00000023 POST /api/orders 201 102
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 POST http://127.0.0.1:50182/api/orders - 201 - application/json;+charset=utf-8 102.9161ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 POST http://127.0.0.1:50182/api/orders - application/json 48
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: POST /api/orders'
+info: Microsoft.AspNetCore.Http.Result.JsonResult[1]
+      Setting HTTP status code 201.
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]
+      Writing value of type 'OrderRequest' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: POST /api/orders'
+info: Flagman.Api[0]
+      Request 0HNPASCFSA3R0:00000024 POST /api/orders 201 111
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 POST http://127.0.0.1:50182/api/orders - 201 - application/json;+charset=utf-8 111.9466ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 POST http://127.0.0.1:50182/api/orders - application/json 48
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: POST /api/orders'
+info: Microsoft.AspNetCore.Http.Result.JsonResult[1]
+      Setting HTTP status code 201.
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]
+      Writing value of type 'OrderRequest' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: POST /api/orders'
+info: Flagman.Api[0]
+      Request 0HNPASCFSA3R0:00000025 POST /api/orders 201 231
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 POST http://127.0.0.1:50182/api/orders - 201 - application/json;+charset=utf-8 231.8347ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 POST http://127.0.0.1:50182/api/orders - application/json 48
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: POST /api/orders'
+info: Microsoft.AspNetCore.Http.Result.JsonResult[1]
+      Setting HTTP status code 201.
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]
+      Writing value of type 'OrderRequest' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: POST /api/orders'
+info: Flagman.Api[0]
+      Request 0HNPASCFSA3R0:00000026 POST /api/orders 201 108
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 POST http://127.0.0.1:50182/api/orders - 201 - application/json;+charset=utf-8 108.7056ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 POST http://127.0.0.1:50182/api/order-requests/2acf9de9a02946dd9498279b7c995fb3/decision - application/json 41
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: POST /api/order-requests/{id}/decision'
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: POST /api/order-requests/{id}/decision'
+info: Flagman.Api[0]
+      Request 0HNPASCFSA3R0:00000027 POST /api/order-requests/2acf9de9a02946dd9498279b7c995fb3/decision 200 117
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 POST http://127.0.0.1:50182/api/order-requests/2acf9de9a02946dd9498279b7c995fb3/decision - 200 - application/json;+charset=utf-8 118.2665ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 POST http://127.0.0.1:50182/api/order-requests/2acf9de9a02946dd9498279b7c995fb3/serve - application/json 21
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: POST /api/order-requests/{id}/serve'
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: POST /api/order-requests/{id}/serve'
+info: Flagman.Api[0]
+      Request 0HNPASCFSA3R0:00000028 POST /api/order-requests/2acf9de9a02946dd9498279b7c995fb3/serve 200 829
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 POST http://127.0.0.1:50182/api/order-requests/2acf9de9a02946dd9498279b7c995fb3/serve - 200 - application/json;+charset=utf-8 829.7704ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 POST http://127.0.0.1:50182/api/order-requests/a3abf67d9bdc45c18a359416e4e2bdc2/decision - application/json 84
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: POST /api/order-requests/{id}/decision'
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: POST /api/order-requests/{id}/decision'
+info: Flagman.Api[0]
+      Request 0HNPASCFSA3R0:00000029 POST /api/order-requests/a3abf67d9bdc45c18a359416e4e2bdc2/decision 200 80
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 POST http://127.0.0.1:50182/api/order-requests/a3abf67d9bdc45c18a359416e4e2bdc2/decision - 200 - application/json;+charset=utf-8 80.7397ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:50182/api/cook/order-requests - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/cook/order-requests'
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/cook/order-requests'
+info: Flagman.Api[0]
+      Request 0HNPASCFSA3R0:0000002A GET /api/cook/order-requests 200 26
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:50182/api/cook/order-requests - 200 - application/json;+charset=utf-8 26.2886ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:50182/api/order-requests - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/order-requests'
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/order-requests'
+info: Flagman.Api[0]
+      Request 0HNPASCFSA3R0:0000002B GET /api/order-requests 200 7
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:50182/api/order-requests - 200 - application/json;+charset=utf-8 7.8112ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:50182/api/waiter/order-requests - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/waiter/order-requests'
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/waiter/order-requests'
+info: Flagman.Api[0]
+      Request 0HNPASCFSA3R0:0000002C GET /api/waiter/order-requests 200 5
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:50182/api/waiter/order-requests - 200 - application/json;+charset=utf-8 6.0716ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:50182/api/order-requests?size=1&page=1 - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/order-requests'
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/order-requests'
+info: Flagman.Api[0]
+      Request 0HNPASCFSA3R0:0000002D GET /api/order-requests 200 8
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:50182/api/order-requests?size=1&page=1 - 200 - application/json;+charset=utf-8 8.7006ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:50182/api/order-requests?size=1&page=2 - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/order-requests'
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/order-requests'
+info: Flagman.Api[0]
+      Request 0HNPASCFSA3R0:0000002E GET /api/order-requests 200 7
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:50182/api/order-requests?size=1&page=2 - 200 - application/json;+charset=utf-8 7.6281ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:50182/api/order-requests?size=1&page=3 - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/order-requests'
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/order-requests'
+info: Flagman.Api[0]
+      Request 0HNPASCFSA3R0:0000002F GET /api/order-requests 200 4
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:50182/api/order-requests?size=1&page=3 - 200 - application/json;+charset=utf-8 4.9286ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:50182/api/order-requests?size=1&page=4 - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/order-requests'
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/order-requests'
+info: Flagman.Api[0]
+      Request 0HNPASCFSA3R0:00000030 GET /api/order-requests 200 4
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:50182/api/order-requests?size=1&page=4 - 200 - application/json;+charset=utf-8 5.0836ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:50182/api/order-requests?size=1&page=1 - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/order-requests'
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/order-requests'
+info: Flagman.Api[0]
+      Request 0HNPASCFSA3R0:00000031 GET /api/order-requests 200 3
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:50182/api/order-requests?size=1&page=1 - 200 - application/json;+charset=utf-8 3.8801ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:50182/api/order-requests?size=1&page=2 - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/order-requests'
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/order-requests'
+info: Flagman.Api[0]
+      Request 0HNPASCFSA3R0:00000032 GET /api/order-requests 200 4
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:50182/api/order-requests?size=1&page=2 - 200 - application/json;+charset=utf-8 4.5664ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:50182/api/order-requests?size=1&page=3 - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/order-requests'
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/order-requests'
+info: Flagman.Api[0]
+      Request 0HNPASCFSA3R0:00000033 GET /api/order-requests 200 4
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:50182/api/order-requests?size=1&page=3 - 200 - application/json;+charset=utf-8 4.0997ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:50182/api/order-requests?size=1&page=4 - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/order-requests'
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/order-requests'
+info: Flagman.Api[0]
+      Request 0HNPASCFSA3R0:00000034 GET /api/order-requests 200 5
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:50182/api/order-requests?size=1&page=4 - 200 - application/json;+charset=utf-8 5.1623ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:50182/api/order-requests?size=1&page=1 - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/order-requests'
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/order-requests'
+info: Flagman.Api[0]
+      Request 0HNPASCFSA3R0:00000035 GET /api/order-requests 200 4
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:50182/api/order-requests?size=1&page=1 - 200 - application/json;+charset=utf-8 4.8047ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:50182/api/order-requests?size=1&page=2 - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/order-requests'
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/order-requests'
+info: Flagman.Api[0]
+      Request 0HNPASCFSA3R0:00000036 GET /api/order-requests 200 4
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:50182/api/order-requests?size=1&page=2 - 200 - application/json;+charset=utf-8 4.3158ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:50182/api/order-requests?size=1&page=3 - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/order-requests'
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/order-requests'
+info: Flagman.Api[0]
+      Request 0HNPASCFSA3R0:00000037 GET /api/order-requests 200 3
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:50182/api/order-requests?size=1&page=3 - 200 - application/json;+charset=utf-8 4.0501ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:50182/api/order-requests?size=1&page=4 - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/order-requests'
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/order-requests'
+info: Flagman.Api[0]
+      Request 0HNPASCFSA3R0:00000038 GET /api/order-requests 200 4
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:50182/api/order-requests?size=1&page=4 - 200 - application/json;+charset=utf-8 5.0435ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:50182/api/cook/order-requests?status=rejected&size=1 - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/cook/order-requests'
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/cook/order-requests'
+info: Flagman.Api[0]
+      Request 0HNPASCFSA3R0:00000039 GET /api/cook/order-requests 200 6
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:50182/api/cook/order-requests?status=rejected&size=1 - 200 - application/json;+charset=utf-8 6.3008ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:50182/api/history/orders - - -
+info: Flagman.Api[0]
+      Request 0HNPASCFSA3R0:0000003A GET /api/history/orders 403 4
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:50182/api/history/orders - 403 - application/json;+charset=utf-8 4.1860ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:50182/api/history/orders - - -
+info: Flagman.Api[0]
+      Request 0HNPASCFSA3R0:0000003B GET /api/history/orders 403 3
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:50182/api/history/orders - 403 - application/json;+charset=utf-8 3.6675ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:50182/api/history/orders - - -
+info: Flagman.Api[0]
+      Request 0HNPASCFSA3R0:0000003C GET /api/history/orders 403 2
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:50182/api/history/orders - 403 - application/json;+charset=utf-8 2.9992ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:50182/api/history/orders - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/history/{entity}'
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/history/{entity}'
+info: Flagman.Api[0]
+      Request 0HNPASCFSA3R0:0000003D GET /api/history/orders 200 16
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:50182/api/history/orders - 200 - application/json;+charset=utf-8 16.7355ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:50182/api/history/orders?status=accepted&size=1 - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/history/{entity}'
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/history/{entity}'
+info: Flagman.Api[0]
+      Request 0HNPASCFSA3R0:0000003E GET /api/history/orders 200 4
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:50182/api/history/orders?status=accepted&size=1 - 200 - application/json;+charset=utf-8 4.5717ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:50182/api/history/orders?status=rejected&size=1 - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/history/{entity}'
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/history/{entity}'
+info: Flagman.Api[0]
+      Request 0HNPASCFSA3R0:0000003F GET /api/history/orders 200 5
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:50182/api/history/orders?status=rejected&size=1 - 200 - application/json;+charset=utf-8 5.7884ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:50182/api/cook/order-requests?status=invalid - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/cook/order-requests'
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/cook/order-requests'
+info: Flagman.Api[0]
+      Request 0HNPASCFSA3R0:00000040 GET /api/cook/order-requests 400 6
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:50182/api/cook/order-requests?status=invalid - 400 - application/json;+charset=utf-8 6.5868ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:50182/api/order-requests?size=100 - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/order-requests'
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/order-requests'
+info: Flagman.Api[0]
+      Request 0HNPASCFSA3R0:00000041 GET /api/order-requests 200 4
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:50182/api/order-requests?size=100 - 200 - application/json;+charset=utf-8 5.1071ms

@@ -15,10 +15,11 @@ catch (Exception error)
 
 static void Run(string[] args)
 {
+if (args.Contains("--admin-events")) { Console.WriteLine($"Admin event checks: {AdminEventChecks.Run()+EventDetailsChecks.Run()}"); return; }
 if (args.Contains("--kitchen-rejections")) { Console.WriteLine($"Rejection checks: {KitchenRejectionChecks.Run()}"); return; }
 if (args.Length==3&&args[0]=="--migration-copy") { MigrationCopyChecks.Run(args[1],args[2]); return; }
 if (args.Contains("--reservations")) { Console.WriteLine($"Reservation checks: {ReservationChecks.Run()}"); return; }
-if (args.Contains("--workflows")) { Console.WriteLine($"Workflow checks: {KitchenRejectionChecks.Run()+ReservationChecks.Run()+KitchenChecks.Run()+WorkflowChecks.Run()+AccessChecks.Run()+WorkflowBoundaryChecks.Run()}"); return; }
+if (args.Contains("--workflows")) { Console.WriteLine($"Workflow checks: {KitchenRejectionChecks.Run()+ReservationChecks.Run()+KitchenChecks.Run()+WorkflowChecks.Run()+AdminEventChecks.Run()+EventDetailsChecks.Run()+AccessChecks.Run()+WorkflowBoundaryChecks.Run()}"); return; }
 var now = DateTimeOffset.Parse("2026-10-10T09:00:00Z");
 if (args.Length > 0 && args[0] == "--compete")
 {
@@ -385,6 +386,20 @@ try {
         Assert(selected.GetProperty("ordersAccepted").GetInt32()==1);
         Throws(()=>store.Analytics(null,null,new(2026,3,8),new(2026,3,9),"2026-03-10"));
         Throws(()=>store.Analytics(null,null,new(2026,3,8),new(2026,3,9),"bad-date"));
+    });
+    Test("Batch latest receipts sort by received date before pagination, independently of expiry",()=>{
+        var store=new Store(Path.Combine(testDir,"batch-receipt-order.db"));
+        store.Write(s=>{
+            s.Products=Base().Products;
+            Inventory.Deliver(s,new("earlier",[new("t",1,"g",now.AddDays(10))]),"earlier",now);
+            Inventory.Deliver(s,new("later",[new("t",1,"g",now.AddDays(2))]),"later",now.AddHours(1));
+            return 0;
+        });
+        string First(int page,string sort)=>JsonSerializer.SerializeToElement(store.History("batches",page,1,null,null,sort),Store.Json).GetProperty("items")[0].GetProperty("receivedAt").GetString()!;
+        Assert(DateTimeOffset.Parse(First(1,"received_newest"))==now.AddHours(1));
+        Assert(DateTimeOffset.Parse(First(2,"received_newest"))==now);
+        Assert(DateTimeOffset.Parse(First(1,"newest"))==now);
+        Assert(DateTimeOffset.Parse(First(1,"oldest"))==now.AddHours(1));
     });
     Test("A5 persisted warning pagination agrees with full dashboard totals",()=>{
         var store=new Store(Path.Combine(testDir,"warning-pagination.db"));var real=DateTimeOffset.UtcNow;
