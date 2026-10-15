@@ -33,7 +33,7 @@ public static class SalesPlanner
         var watch=Stopwatch.StartNew();
         if(s.Dishes.Count<=20&&s.Batches.Count<=100)budgetMs=Math.Min(budgetMs,650);
         var dishes=s.Dishes.Where(d=>!d.Archived && d.Ingredients.Count>0).OrderBy(d=>d.Id,StringComparer.Ordinal).ToArray();
-        var batches=s.Batches.Where(b=>b.RemainingQuantity>0 && b.ExpiresAt>now).OrderBy(b=>b.ExpiresAt).ThenBy(b=>b.ReceivedAt).ThenBy(b=>b.Id,StringComparer.Ordinal).ToArray();
+        var batches=Inventory.FreeBatches(s).Where(b=>b.RemainingQuantity>0 && b.ExpiresAt>now).OrderBy(b=>b.ExpiresAt).ThenBy(b=>b.ReceivedAt).ThenBy(b=>b.Id,StringComparer.Ordinal).ToArray();
         var products=s.Products.ToDictionary(p=>p.Id);
         var risk=batches.Select(b=>b.ExpiresAt<=now.AddHours((double)Math.Min(products[b.ProductId].WarningHours,s.Settings.WarningHours))).ToArray();
         if(input.Objective=="money") {

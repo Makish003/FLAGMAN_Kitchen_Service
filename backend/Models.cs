@@ -21,7 +21,7 @@ public record DeliveryLine(string ProductId, decimal Quantity, string Unit, Date
 public record DeliveryInput(string Number, List<DeliveryLine> Items, DateTimeOffset? ReceivedAt = null, DateTimeOffset? CreatedAt = null, string? Id = null);
 public record OrderInput(List<OrderItem> Items);
 public record GeneratorInput(int Seed = 42, int IntervalSeconds = 5);
-public record GeneratorEvent(string Id, DateTimeOffset At, int Seed, int Step, string Kind, string? EntityId, string Status, string Summary);
+public record GeneratorEvent(string Id, DateTimeOffset At, int Seed, int Step, string Kind, string? EntityId, string Status, string Summary, bool RequestDocument=false);
 public record Settings(string Timezone = "Europe/Moscow", decimal WarningHours = 48, int DemandWindowDays = 7,
     int PlanningHours = 48, int LeadTimeHours = 12, decimal SafetyFactor = 0.2m, int ForecastHours = 168,
     int OpenHour = 0, int CloseHour = 24, List<int>? OpenDays = null,

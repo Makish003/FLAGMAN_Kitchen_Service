@@ -53,7 +53,7 @@ export function OperationModal({kind,s,editDish,presetDish,orderPreset,deliveryP
     if(kind==='product'){await api('/products','POST',{id,name,unit,warningHours:warning});done('Продукт добавлен');}
     if(kind==='dish'){await api('/dishes','POST',{id,name,category,ingredients:lines.map(l=>({productId:l.productId,quantity:+l.quantity}))});done('Рецептура сохранена');}
     if(kind==='delivery'){await durableOperation('/deliveries',deliveryBody(),key.current);done('Заявка на поставку отправлена. Ожидает приёмки.');}
-    if(kind==='order'){const order=await durableOperation<Order>('/orders',{items},key.current);if(order.status==='rejected')setResult(order);else done('Заявка на заказ отправлена. Ожидает решения менеджера.');}
+    if(kind==='order'){const order=await durableOperation<Order>('/orders',{items},key.current);if(order.status==='rejected')setResult(order);else done('Заявка на заказ отправлена. Ожидает приготовления.');}
     if(kind==='settings'){await api('/settings','PUT',settings);done('Настройки обновлены');}
   }catch(err){setError((err as Error).message);}finally{sending.current=false;setBusy(false);}};
   const titles={delivery:'Заявка на поставку',order:'Новый заказ',product:'Добавить продукт',dish:editDish?'Изменить рецептуру':'Добавить блюдо',settings:'Настройки ресторана'};

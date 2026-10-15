@@ -83,7 +83,7 @@ public static class Insights
         {
             var daily = s.Dishes.Where(d=>!d.Archived).Sum(d => demand.GetValueOrDefault(d.Id) * d.Ingredients.Where(i => i.ProductId == p.Id).Sum(i => i.Quantity));
             var target = daily * (s.Settings.PlanningHours + s.Settings.LeadTimeHours) / 24m * (1 + s.Settings.SafetyFactor);
-            var usable = s.Batches.Where(b => b.ProductId == p.Id && b.ExpiresAt > arrival).Sum(b => b.RemainingQuantity);
+            var usable = Inventory.Available(s,p.Id,arrival);
             var minimum = s.Dishes.Where(d=>!d.Archived).SelectMany(d => d.Ingredients).Where(i => i.ProductId == p.Id).Select(i => i.Quantity).DefaultIfEmpty(0).Max();
             // Without sales history, show only the operational deficit to restore one portion.
             if (daily == 0) target = minimum;
@@ -211,6 +211,7 @@ public static class Insights
                 lastCurrency = latestPrices.GetValueOrDefault(p.Id)?.Currency,
                 physical = s.Batches.Where(b => b.ProductId == p.Id).Sum(b => b.RemainingQuantity),
                 usable = Inventory.Available(s, p.Id, now),
+                reserved = s.Batches.Where(b=>b.ProductId==p.Id&&b.ExpiresAt>now).Sum(b=>Math.Min(b.RemainingQuantity,Inventory.Reserved(s).GetValueOrDefault(b.Id))),
                 expired = s.Batches.Where(b => b.ProductId == p.Id && b.ExpiresAt <= now).Sum(b => b.RemainingQuantity),
                 expiring = s.Batches.Where(b => b.ProductId == p.Id && b.ExpiresAt > now && b.ExpiresAt <= now.AddHours((double)Math.Min(p.WarningHours, s.Settings.WarningHours))).Sum(b => b.RemainingQuantity) }),
             dishes = s.Dishes.Select(d => new { d.Id, d.Name, d.Category, d.Ingredients, d.Archived, portions = d.Archived ? 0 : Inventory.Portions(s, d, now),

@@ -50,7 +50,7 @@ test('procurement uses inset content, styled controls and a compact responsive f
 
 test('manager request cards and decision dialogs fit desktop and mobile',async({page})=>{
   await mockApp(page,'manager',true);
-  for(const [route,button,title] of [['deliveries','Проверить приёмку','Приёмка П-001'],['orders','Проверить заказ','Решение по заказу']]){
+  for(const [route,button,title] of [['deliveries','Проверить приёмку','Приёмка П-001']]){
     await page.goto('/'+route);
     await expect(page.locator('.workflow-card').first().getByText('Ожидает решения')).toBeVisible();
     await page.getByRole('button',{name:button,exact:true}).click();
@@ -64,14 +64,14 @@ test('manager request cards and decision dialogs fit desktop and mobile',async({
   }
 });
 
-for(const role of ['supplier','waiter'])test(`${role} workspace uses shared controls and fits narrow screens`,async({page})=>{
+for(const role of ['supplier','waiter','cook'])test(`${role} workspace uses shared controls and fits narrow screens`,async({page})=>{
   await mockApp(page,role,true);
   await page.goto('/'+role);
   await expect(page.getByRole('button',{name:'Выйти',exact:true})).toBeVisible();
   if(role==='supplier'){
     await page.getByRole('button',{name:'Добавить лот',exact:true}).click();
     await expect(page.getByRole('combobox',{name:'Продукт',exact:true})).toHaveValue('Томаты');
-  }else{
+  }else if(role==='waiter'){
     await page.getByRole('button',{name:'В корзину',exact:true}).click();
     await expect(page.getByRole('spinbutton',{name:'Салат с томатами',exact:true})).toHaveValue('1');
   }
@@ -146,4 +146,62 @@ test('offer publication matches the shared form and checkbox styling',async({pag
     expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
     await page.screenshot({path:`../test-results/workflow-publication-${width}.png`,fullPage:true});
   }
+});
+
+test('delivery reason appears only for a reduction and is cleared on full acceptance',async({page})=>{
+  await mockApp(page,'manager',true);
+  await page.goto('/deliveries');
+  await page.getByRole('button',{name:'Проверить приёмку',exact:true}).click();
+  const dialog=page.getByRole('dialog');
+  const quantity=dialog.getByRole('spinbutton',{name:'Принято',exact:true});
+  const reason=dialog.getByRole('textbox',{name:'Причина уменьшения или отказа',exact:true});
+  await expect(reason).toHaveCount(0);
+  await quantity.fill('1000');
+  await expect(reason).toBeVisible();
+  await expect(reason).toHaveAttribute('required','');
+  await reason.fill('Повреждена упаковка');
+  await quantity.fill('1200');
+  await expect(reason).toHaveCount(0);
+  await quantity.fill('1000');
+  await expect(reason).toHaveValue('');
+  await reason.fill('Повреждена упаковка');
+  await quantity.fill('1200');
+  const submitted=page.waitForRequest(r=>r.method()==='POST'&&r.url().endsWith('/delivery-requests/delivery001/acceptance'));
+  await dialog.getByRole('button',{name:'Подтвердить приёмку',exact:true}).click();
+  expect((await submitted).postDataJSON().items[0]).toMatchObject({acceptedQuantity:1200,reason:''});
+});
+
+test('full refusal reveals the reason below the quantity without submitting',async({page})=>{
+  await mockApp(page,'manager',true);
+  await page.goto('/deliveries');
+  await page.getByRole('button',{name:'Проверить приёмку',exact:true}).click();
+  const dialog=page.getByRole('dialog');
+  await dialog.getByRole('button',{name:'Отказать полностью',exact:true}).click();
+  const quantity=dialog.getByRole('spinbutton',{name:'Принято',exact:true});
+  const reason=dialog.getByRole('textbox',{name:'Причина уменьшения или отказа',exact:true});
+  await expect(quantity).toHaveValue('0');
+  await expect(reason).toBeVisible();
+  expect((await reason.boundingBox())!.y).toBeGreaterThan((await quantity.boundingBox())!.y);
+  for(const width of [1440,390,280]){
+    await page.setViewportSize({width,height:960});
+    expect(await dialog.evaluate(el=>el.scrollWidth<=el.clientWidth)).toBe(true);
+  }
+  await dialog.getByRole('button',{name:'Подтвердить приёмку',exact:true}).click();
+  await expect(dialog).toBeVisible();
+  expect(await reason.evaluate(el=>(el as HTMLInputElement).validity.valueMissing)).toBe(true);
+  await reason.fill('Товар испорчен');
+  const submitted=page.waitForRequest(r=>r.method()==='POST'&&r.url().endsWith('/delivery-requests/delivery001/acceptance'));
+  await dialog.getByRole('button',{name:'Подтвердить приёмку',exact:true}).click();
+  expect((await submitted).postDataJSON().items[0]).toMatchObject({acceptedQuantity:0,reason:'Товар испорчен'});
+});
+
+test('delivery cards show refusal reasons only for reduced quantities',async({page})=>{
+  await mockApp(page,'manager',true);
+  await page.route('**/api/delivery-requests?**',route=>route.fulfill({json:{page:1,size:50,total:2,items:[
+    {...delivery,status:'accepted',acceptance:[{lineId:'line1',acceptedQuantity:1200,reason:'Лишняя причина'}]},
+    {...delivery,id:'delivery002',number:'П-002',status:'partially_accepted',acceptance:[{lineId:'line1',acceptedQuantity:1000,reason:'Повреждена упаковка'}]},
+  ]}}));
+  await page.goto('/deliveries');
+  await expect(page.getByText('Лишняя причина',{exact:false})).toHaveCount(0);
+  await expect(page.getByText('Повреждена упаковка',{exact:false})).toBeVisible();
 });

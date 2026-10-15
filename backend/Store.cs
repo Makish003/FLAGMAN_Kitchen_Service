@@ -90,8 +90,13 @@ public sealed class Store
             var warning = "MIN(COALESCE((SELECT json_extract(p.payload,'$.warningHours') FROM products p WHERE p.id=json_extract(t.payload,'$.productId')),48),$warning)/24.0";
             where += status switch { "empty" => $" AND {remaining}=0", "written_off" => $" AND {remaining}=0 AND EXISTS(SELECT 1 FROM movements m WHERE json_extract(m.payload,'$.batchId')=t.id AND json_extract(m.payload,'$.kind') IN ('expiry','write_off'))", "consumed" => $" AND {remaining}=0 AND NOT EXISTS(SELECT 1 FROM movements m WHERE json_extract(m.payload,'$.batchId')=t.id AND json_extract(m.payload,'$.kind') IN ('expiry','write_off'))", "expired" => $" AND {remaining}>0 AND {expiry}<=$now", "warning" => $" AND {remaining}>0 AND {expiry}>$now AND {expiry}<=$now+{warning}", "fresh" => $" AND {remaining}>0 AND {expiry}>$now+{warning}", _ => throw new DomainException("Неизвестный фильтр") };
         }
+        if (entity == "orders" && status is not null and not "all") {
+            Inventory.Require(status is "accepted" or "rejected", "Неизвестный статус заказа");
+            where += " AND json_extract(t.payload,'$.status')=$status";
+        }
         var date = entity == "batches" ? "expiresAt" : entity is "movements" or "audit" or "generatorEvents" ? "at" : "createdAt";
         using var cmd = db.CreateCommand(); cmd.Transaction = tx; cmd.Parameters.AddWithValue("$q", search ?? ""); cmd.Parameters.AddWithValue("$warning", (double)metadata.Settings.WarningHours); cmd.Parameters.AddWithValue("$now", now.UtcDateTime.ToOADate()+2415018.5);
+        if(entity=="orders"&&status is not null and not "all")cmd.Parameters.AddWithValue("$status",status);
         cmd.CommandText = $"SELECT COUNT(*) FROM {entity} t" + where; var total = Convert.ToInt32(cmd.ExecuteScalar());
         cmd.Parameters.AddWithValue("$limit", size); cmd.Parameters.AddWithValue("$offset", (page-1)*size);
         Inventory.Require(sort is null or "oldest" or "newest", "Неизвестный порядок сортировки");
@@ -113,6 +118,7 @@ public sealed class Store
     static State ActiveState(SqliteConnection db, SqliteTransaction tx, bool includeBatches = true)
     {
         var state = Metadata(db, tx); state.Products = Selected<Product>(db, tx, "products"); state.Dishes = Selected<Dish>(db, tx, "dishes");
+        state.OrderRequests=Selected<OrderRequest>(db,tx,"orderRequests","json_extract(payload,'$.status')='submitted'");
         if(includeBatches) state.Batches = Selected<Batch>(db, tx, "batches", "json_extract(payload,'$.remainingQuantity')>0"); return state;
     }
     public T WriteOperation<T>(string scope, string key, Func<State,T> action, string? deliveryId = null, OrderInput? orderInput = null)
@@ -126,7 +132,7 @@ public sealed class Store
             foreach(var item in orderInput.Items)foreach(var ingredient in state.Dishes.Find(d=>d.Id==item.DishId)?.Ingredients??[]) needs[ingredient.ProductId]=needs.GetValueOrDefault(ingredient.ProductId)+ingredient.Quantity*item.Portions;
             foreach(var need in needs){var predicate=$"json_extract(payload,'$.productId')=$key AND json_extract(payload,'$.remainingQuantity')>0 AND julianday(json_extract(payload,'$.expiresAt'))>{julian} ORDER BY julianday(json_extract(payload,'$.expiresAt')),julianday(json_extract(payload,'$.receivedAt')),id";
                 var rows=Selected<Batch>(db,tx,"batches",predicate+" LIMIT 128",need.Key);
-                if(rows.Sum(b=>b.RemainingQuantity)<need.Value)rows=Selected<Batch>(db,tx,"batches",predicate,need.Key);
+                if(rows.Sum(b=>Math.Max(0,b.RemainingQuantity-Inventory.Reserved(state).GetValueOrDefault(b.Id)))<need.Value)rows=Selected<Batch>(db,tx,"batches",predicate,need.Key);
                 state.Batches.AddRange(rows);
             }
         }

@@ -31,7 +31,7 @@ if (storeInstance.Read(s=>s.Users.Count)==0 && (string.IsNullOrWhiteSpace(passwo
 if (!demo && storeInstance.Metadata().DemoOffsetHours != 0) throw new InvalidOperationException("Demo clock detected. Use a separate, new production database; never reset existing inventory time.");
 if (demo && storeInstance.Read(Demo.NeedsEnrichment))
     storeInstance.Write(s => Demo.Enrich(s, s.Now(DateTimeOffset.UtcNow)));
-storeInstance.Write(s => { AccessService.Bootstrap(s, password!); return 0; });
+storeInstance.Write(s => { AccessService.Bootstrap(s, password!); WorkflowService.ReserveLegacyOrders(s,s.Now(DateTimeOffset.UtcNow)); return 0; });
 builder.Services.AddSingleton(storeInstance); builder.Services.AddSingleton<PlanningService>(); builder.Services.AddSingleton<Generator>(); builder.Services.AddHostedService<Flagman.Monitor>();
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme).AddCookie(o => {
     o.Cookie.Name = "flagman.session"; o.Cookie.HttpOnly = true; o.Cookie.SameSite = SameSiteMode.Strict;
@@ -79,7 +79,7 @@ app.Use(async (ctx,next)=>{
     }
     var path=(ctx.Request.Path.Value??"").ToLowerInvariant();
     if(path.StartsWith("/api/")&&ctx.User.Identity?.IsAuthenticated==true) {
-        var external=path is "/api/session" or "/api/logout" or "/api/events" or "/api/deliveries" or "/api/orders" || path.StartsWith("/api/supplier/")||path.StartsWith("/api/waiter/")||path.StartsWith("/api/procurement-requests")||path.StartsWith("/api/delivery-requests")||path.StartsWith("/api/order-requests")||path.StartsWith("/api/operations/");
+        var external=path is "/api/session" or "/api/logout" or "/api/events" or "/api/deliveries" or "/api/orders" || path.StartsWith("/api/supplier/")||path.StartsWith("/api/waiter/")||path.StartsWith("/api/cook/")||path.StartsWith("/api/procurement-requests")||path.StartsWith("/api/delivery-requests")||path.StartsWith("/api/order-requests")||path.StartsWith("/api/operations/");
         if(!external&&!ctx.User.IsInRole("manager")){ctx.Response.StatusCode=403;await ctx.Response.WriteAsJsonAsync(new{error="Недостаточно прав"});return;}
     }
     await next();
@@ -116,7 +116,7 @@ api.AddEndpointFilter(async (context,next) => {
     }
     return await next(context);
 });
-api.MapGet("/operations/{scope}/{key}", (string scope, string key, HttpContext ctx, Store store) => { Inventory.Require(new[]{"order","delivery","procurement","procurement-response","procurement-cancel","delivery-acceptance","order-decision","write-off"}.Contains(scope), "Неизвестная операция", 404); var actor=AccessService.Actor(ctx); AccessService.RequireRole(actor,scope=="order"?new[]{"manager","waiter"}:scope=="delivery"?new[]{"manager","supplier"}:scope=="procurement-response"?new[]{"supplier"}:new[]{"manager"}); var result = store.Operation(WorkflowService.Scope(actor,scope), key); return result is null ? Results.NotFound(new { error = "Результат пока не найден. Повторите исходный запрос с прежним ключом." }) : Results.Content(result, "application/json"); });
+api.MapGet("/operations/{scope}/{key}", (string scope, string key, HttpContext ctx, Store store) => { Inventory.Require(new[]{"order","delivery","procurement","procurement-response","procurement-cancel","delivery-acceptance","order-decision","order-serve","write-off"}.Contains(scope), "Неизвестная операция", 404); var actor=AccessService.Actor(ctx); AccessService.RequireRole(actor,scope=="order"?new[]{"manager","waiter"}:scope=="delivery"?new[]{"manager","supplier"}:scope=="procurement-response"?new[]{"supplier"}:scope=="order-decision"?new[]{"cook","manager"}:scope=="order-serve"?new[]{"waiter","manager"}:new[]{"manager"}); var result = store.Operation(WorkflowService.Scope(actor,scope), key); return result is null ? Results.NotFound(new { error = "Результат пока не найден. Повторите исходный запрос с прежним ключом." }) : Results.Content(result, "application/json"); });
 api.MapPost("/logout", async (HttpContext ctx,Store store) => { store.WriteOperation("audit","",s=>{s.Audit.Add(new(Inventory.Id(),"session.logout",ctx.User.FindFirst("sessionId")!.Value,DateTimeOffset.UtcNow,"restaurant"));return 0;});await ctx.SignOutAsync(); return Results.Ok(); });
 api.MapGet("/snapshot", (Store store) => store.Dashboard());
 api.MapPost("/planning", (PlanningInput input,Store store,PlanningService planner)=>{var s=store.PlanningState();return planner.Calculate(s,s.Now(DateTimeOffset.UtcNow),input);});

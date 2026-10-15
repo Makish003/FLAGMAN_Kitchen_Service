@@ -56,4 +56,4 @@ export async function recoverPending(): Promise<any> {
   return durableOperation(intent.path, intent.body, intent.key);
 }
 
-function operationScope(path:string){if(['/orders','/order-requests'].includes(path))return 'order';if(['/deliveries','/delivery-requests'].includes(path))return 'delivery';if(path==='/procurement-requests')return 'procurement';return ({'supplier-response':'procurement-response','cancel':'procurement-cancel','acceptance':'delivery-acceptance','decision':'order-decision','write-off':'write-off'} as Record<string,string>)[path.split('/').at(-1)??''];}
+function operationScope(path:string){if(['/orders','/order-requests'].includes(path))return 'order';if(['/deliveries','/delivery-requests'].includes(path))return 'delivery';if(path==='/procurement-requests')return 'procurement';return ({'supplier-response':'procurement-response','cancel':'procurement-cancel','acceptance':'delivery-acceptance','decision':'order-decision','serve':'order-serve','write-off':'write-off'} as Record<string,string>)[path.split('/').at(-1)??''];}

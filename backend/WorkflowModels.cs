@@ -11,9 +11,12 @@ public record DeliveryRequest(string Id,string AuthorId,string Number,List<Deliv
 public record DeliveryRequestInput(string Number,List<DeliveryLine> Items);
 public record DeliveryAcceptanceLine(string LineId,decimal AcceptedQuantity,DateTimeOffset? VerifiedExpiresAt=null,string? Reason=null);
 public record DeliveryAcceptanceInput(int ExpectedVersion,List<DeliveryAcceptanceLine> Items);
-public record OrderRequest(string Id,string AuthorId,List<OrderItem> Items,string RecipeFingerprint,DateTimeOffset CreatedAt,string Status="submitted",int Version=1,string? OrderId=null,string? Reason=null,List<Shortage>? Shortages=null,string? DecisionActorId=null,DateTimeOffset? DecidedAt=null);
+public record OrderRequest(string Id,string AuthorId,List<OrderItem> Items,string RecipeFingerprint,DateTimeOffset CreatedAt,string Status="submitted",int Version=1,string? OrderId=null,string? Reason=null,List<Shortage>? Shortages=null,string? DecisionActorId=null,DateTimeOffset? DecidedAt=null,string? ServedById=null,DateTimeOffset? ServedAt=null,List<BatchReservation>? Reservations=null,OrderRejection? Rejection=null,List<RejectionProduct>? IngredientProducts=null);
+public record BatchReservation(string BatchId,decimal Quantity);
 public record OrderRequestInput(List<OrderItem> Items);
-public record OrderDecisionInput(int ExpectedVersion,string Decision,string? Reason=null);
+public record RejectionProduct(string Id,string Name);
+public record OrderRejection(string Code,List<RejectionProduct> Products,string? Comment=null);
+public record OrderDecisionInput(int ExpectedVersion,string Decision,string? Reason=null,string? ReasonCode=null,List<string>? ProductIds=null);
 public record OfferOverride(string Id,string Visibility,bool Emphasized,string? WaiterNote,int Version=1);
 public record OfferInput(string Visibility,bool Emphasized,string? WaiterNote,int ExpectedVersion);
 public record PublishedOffer(string DishId,string Name,string Category,int AvailablePortions,string Visibility,bool Emphasized,string? WaiterNote,string? UnavailableReason);
