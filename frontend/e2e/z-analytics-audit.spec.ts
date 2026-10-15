@@ -1,17 +1,18 @@
+import {acceptDocument} from './legacy-workflow-helpers';
 import {test,expect} from '@playwright/test';
 
 test.skip(process.env.FLAGMAN_DEMO!=='true','Uses an isolated demo database');
 test('full warning counts and pagination beyond 500 batches with live API',async({page})=>{
   test.setTimeout(90000);
   const headers={'X-Requested-With':'Flagman'};
-  await page.request.post('/api/login',{headers,data:{password:process.env.FLAGMAN_PASSWORD}});
+  await page.request.post('/api/login',{headers,data:{login:'manager',password:process.env.FLAGMAN_PASSWORD}});
   const before=await (await page.request.get('/api/snapshot')).json();
   const productId='audit-'+crypto.randomUUID();
   const name='Аудит партий '+productId;
   expect((await page.request.post('/api/products',{headers,data:{id:productId,name,unit:'g',warningHours:48}})).ok()).toBe(true);
   for(let i=0;i<6;i++){
     const response=await page.request.post('/api/deliveries',{headers:{...headers,'Idempotency-Key':productId+'-'+i},data:{number:productId+'-'+i,items:Array.from({length:i===5?1:100},()=>({productId,quantity:1,unit:'g',shelfLifeHours:24}))}});
-    expect(response.ok()).toBe(true);
+    expect(response.ok()).toBe(true);await acceptDocument(page.request,await response.json());
   }
   const after=await (await page.request.get('/api/snapshot')).json();
   expect(after.totals.activeBatches).toBe(before.totals.activeBatches+501);

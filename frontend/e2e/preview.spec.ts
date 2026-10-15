@@ -13,7 +13,9 @@ test.beforeEach(async({page})=>{
     if(pathname==='/api/events')return route.fulfill({contentType:'text/event-stream',body:': connected\n\n'});
     const now='2026-10-11T05:00:00Z';
     let body:any={now,revision:1,settings:{timezone:'Europe/Moscow',warningHours:48},products:[{id:'t',name:'Томаты',unit:'g',usable:1000,physical:1000}],dishes:[{id:'a',name:'Блюдо А',portions:2,ingredients:[{productId:'t',quantity:500}]}],batches:[],deliveries:[],orders:[],movements:[],totals:{batches:0,deliveries:0,orders:0,movements:0}};
-    if(pathname==='/api/session')body={name:'Управляющий',demo:true};
+    if(['/api/delivery-requests','/api/order-requests','/api/procurement-requests'].includes(pathname))return route.fulfill({json:{items:[],total:0,page:1,size:50}});
+    if(['/api/accounts','/api/offers/overrides'].includes(pathname))return route.fulfill({json:[]});
+    if(pathname==='/api/session')body={id:'mock-manager',role:'manager',name:'Управляющий',demo:true};
     if(pathname.startsWith('/api/history/'))body={items:[],total:0};
     if(pathname==='/api/deliveries/preview') {
       const input=route.request().postDataJSON();
@@ -42,6 +44,45 @@ test('editing receipt and expiry clears old errors and results; recalculation sh
   await expect(dialog.getByRole('region',{name:'Результат расчёта'})).toHaveCount(0);
   await expect(dialog.getByRole('status')).toContainText('Выполните расчёт повторно');
   await calculate.click();await expect(dialog.getByRole('region',{name:'Результат расчёта'})).toContainText('3 нояб.');
+});
+
+test('clock and stock refresh preserve delivery calculation; stale results can be recalculated',async({page})=>{
+  await page.clock.install();
+  await page.getByRole('button',{name:'Принять поставку',exact:true}).first().click();
+  const dialog=page.getByRole('dialog');
+  await dialog.getByLabel('Количество',{exact:true}).fill('500');
+  await chooseOption(dialog,'Как указан срок годности','date');
+  await dialog.getByLabel('Срок годности без времени').fill('2026-10-31');
+  const calculate=dialog.getByRole('button',{name:'Рассчитать результат поставки'});
+  await calculate.click();
+  const result=dialog.getByRole('region',{name:'Результат расчёта'});
+  await expect(result).toBeVisible();
+  let revision=1;
+  await page.route('**/api/snapshot',async route=>{
+    const snapshot={now:'2026-10-11T05:01:00Z',revision,settings:{timezone:'Europe/Moscow',warningHours:48},products:[{id:'t',name:'Томаты',unit:'g',usable:1000,physical:1000}],dishes:[{id:'a',name:'Блюдо А',portions:2,ingredients:[{productId:'t',quantity:500}]}],batches:[],deliveries:[],orders:[],movements:[],totals:{batches:0,deliveries:0,orders:0,movements:0}};
+    await route.fulfill({json:snapshot});
+  });
+  await page.clock.fastForward(30000);
+  await expect(dialog.getByLabel(/^Время поступления/)).toHaveValue('2026-10-11T08:01');
+  await expect(result).toBeVisible();
+  await expect(dialog.getByRole('status')).toHaveCount(0);
+  revision=2;
+  await page.clock.fastForward(30000);
+  await expect(dialog.getByRole('status')).toContainText('Склад изменился');
+  await expect(result).toBeVisible();
+  await expect(result).toContainText('после 3 порций');
+  const spacing=await dialog.evaluate(node=>{
+    const result=node.querySelector('.preview-result')!.getBoundingClientRect();
+    const notice=node.querySelector('.notice.danger')!.getBoundingClientRect();
+    return notice.top-result.bottom;
+  });
+  expect(spacing).toBeGreaterThanOrEqual(16);
+  await calculate.click();
+  await expect(result).toBeVisible();
+  await expect(dialog.getByRole('status')).toHaveCount(0);
+  await dialog.getByLabel('Количество',{exact:true}).fill('600');
+  await expect(result).toHaveCount(0);
+  await expect(dialog.getByRole('status')).toContainText('Форма изменена');
 });
 
 test('expiry sort closes after selection, outside clicks and keyboard dismissal',async({page})=>{

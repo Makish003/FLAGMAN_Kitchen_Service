@@ -1,60 +1,84 @@
-# API v1
+# API: роли и внешние заявки
 
-Базовый путь `/api`, JSON camelCase. Все запросы, кроме health/login, требуют cookie `flagman.session`. `POST/PUT` требуют `X-Requested-With: Flagman`. Браузерные запросы проверяют Origin. Не передавайте сессионные cookies третьим сторонам.
+Базовый путь `/api`, JSON camelCase. Актуальный контракт после перехода на заявки. Прежние `/orders` и `/deliveries` больше не проводят складские операции напрямую.
 
-`POST /login {"password":"..."}` устанавливает HttpOnly cookie; 401 при неверном пароле, 429 при превышении 10 попыток/IP/минуту. `POST /logout`, `GET /session {name,demo}`. `GET /health` проверяет чтение БД.
+## Авторизация
 
-`GET /snapshot` — общий снимок: now, revision, settings, products, batches, dishes, deliveries, orders, movements, recommendations, salePlan, procurement, forecasts, analytics, totals. Snapshot не заменяет полный журнал.
+`POST /login {"login":"manager","password":"..."}` устанавливает HttpOnly cookie. Первый manager создаётся один раз из `FLAGMAN_PASSWORD` (минимум 10 символов). После bootstrap переменная не требуется для запуска и вход только по общему паролю запрещён. `/session` возвращает `{id,name,role,timezone,demo}`. Регистр символов в имени маршрута и схеме Bearer не отменяет проверки роли. Лимит входа: 10/IP/минуту, `429` и Retry-After. Анонимный защищённый запрос: `401`.
 
-`POST /products {"id":"tomato","name":"Томаты","unit":"g","warningHours":48}`. Unit: g/ml/pcs. `POST /dishes {"id":"caprese","name":"Капрезе","category":"Закуски","ingredients":[{"productId":"tomato","quantity":200}]}`. Quantity в базовой единице на порцию. До продаж рецепт можно изменить тем же ID.
+Cookie-команды требуют `X-Requested-With: Flagman`, проверяется Origin. Внешний API использует `Authorization: Bearer <token>` без cookie/CSRF-заголовка. Роль, active и sessionVersion проверяются по БД; изменение аккаунта инвалидирует прежние cookie и ключи. `/events` прекращает поток при отзыве доступа. Ключи хранятся в виде SHA-256 hash, пароли через ASP.NET PasswordHasher. Ответ выдачи ключа показывается один раз; не сохраняйте его в журналах.
 
-`POST /deliveries`, обязательный заголовок `Idempotency-Key: external-delivery-001`:
+## Команды и повторы
 
-```json
-{
-  "id": "external-delivery-001",
-  "number": "ПС-1001",
-  "createdAt": "2026-10-10T09:00:00Z",
-  "receivedAt": "2026-10-10T09:00:00Z",
-  "items": [
-    {"productId":"tomato","quantity":2,"unit":"kg","expiresAt":"2026-10-11T09:00:00Z"},
-    {"productId":"tomato","quantity":3,"unit":"kg","shelfLifeHours":168,"manufacturedAt":"2026-10-10T07:00:00Z"}
-  ]
-}
-```
+Создание/ответ/решение/списание требуют `Idempotency-Key` (1–100 символов). Область: стабильный actorId + операция. Повтор того же тела возвращает первоначальный документ; другое тело с тем же ключом даёт `409`. Решения требуют `expectedVersion`; retry восстанавливается до проверки версии. Все изменения документа, партии, движения, audit, события и результата фиксируются в одной SQLite BEGIN IMMEDIATE.
 
-ID и времена необязательны, по умолчанию сервер создаёт их. Строка также может содержать `expiryDate: "2026-10-11"` вместо expiresAt. При отсутствии явной даты нужен положительный shelfLifeHours: расчёт от manufacturedAt, иначе receivedAt. Дата производства не позже поступления; поступление не из будущего.
+Recovery: `GET /operations/{scope}/{key}`. Scope: `procurement`, `procurement-response`, `procurement-cancel`, `delivery`, `delivery-acceptance`, `order`, `order-decision`, `write-off`. Другой аккаунт не видит результат (`404` при допустимой роли). После timeout сначала recovery, затем исходный запрос с прежним key. Legacy scopes теперь возвращают DeliveryRequest/OrderRequest, а не складские Delivery/Order.
 
-`POST /orders`, обязательный `Idempotency-Key: external-order-001`:
+## Закупка 10 → 8 → 7 кг
+
+Менеджер отправляет `POST /procurement-requests`:
 
 ```json
-{"items":[{"dishId":"caprese","portions":2},{"dishId":"pasta","portions":1}]}
+{"supplierId":"ACCOUNT_ID","items":[{"id":"t","productId":"tomato","quantity":10,"unit":"kg"},{"id":"c","productId":"cream","quantity":5,"unit":"l"}],"comment":"Для смены"}
 ```
 
-Ответ 201: `{id,createdAt,status:"accepted",items,shortages:[]}`. Ответ 422 — **сохранённый отклонённый заказ** с status rejected, shortages (productId, productName, unit, requested, available, missing, dishIds). При отказе движений расхода нет. Повтор возвращает прежний статус и ID; 409 при другом содержимом. Неизвестные блюда, единицы, неположительные количества: 400 `{error}`.
-
-`GET /history/{batches|deliveries|orders|movements}?page=1&size=50` — total, page, size, items. Размер 1–100.
-
-`GET /analytics?from=2026-10-01T00:00:00Z&to=2026-10-10T23:59:59Z` — отдельный расход на заказы, потери, статистика отказов по продуктам и дневные заказы. По умолчанию последние 7 дней. Границы включены; дневной ряд охватывает весь диапазон и группируется в `settings.timezone`, независимо от смещения входных дат. `timezone` возвращает пояс, `daily[].day` — календарную дату `YYYY-MM-DD`, включая дни без заказов.
-
-`GET /analytics?fromDate=2026-10-01&toDate=2026-10-12` — целые календарные дни ресторана: от местной полуночи до начала следующего после `toDate` дня минус один тик. Учитывает дни длительностью 23/25 часов при DST. Обе даты обязательны; смешивание с `from/to`, обратный период и неоднозначная/пропущенная полночь возвращают 400. Для такой полуночи можно передать моменты `from/to` с явным смещением.
-
-`GET /analytics?fromDate=2026-10-01&toDate=2026-10-04&days=2026-10-01,2026-10-02,2026-10-04` — учитывает только выбранные календарные дни в часовом поясе ресторана, включая расход, списания и дефицит. Повторяющиеся даты учитываются один раз. Неверная дата или день вне периода возвращают 400. Без `days` учитывается весь период. Дневной ряд сохраняет полный диапазон, а исключённые дни имеют нулевые значения; интерфейс сохраняет исходный график для выбора дат.
-
-`dishes` — рейтинг блюд из отклонённых заказов: `id`, `name`, `rejectedOrders`, `rejectedPortions`, `reasons`. Один отклонённый заказ учитывается один раз для каждого входящего в него блюда независимо от числа дефицитных ингредиентов. Один заказ с несколькими блюдами может попасть в несколько строк рейтинга.
-
-`wasteProducts` — стоимость списаний по продуктам: `id`, `name`, `unit`, `currency`, `cost`. Интерфейс показывает топ-5 отдельно в каждой валюте.
-
-Потери учитываются по дате проведения списания. `costs` и `wasteProducts` суммируют только известные цены раздельно по валютам; `priceCoverage` содержит отдельные `{kind, priced, total}` для `order` и `expiry`. Сохранены общие `pricedMovements`/`totalMovements`, включая поступления.
-
-В snapshot `totals.activeBatches` и `totals.warningBatches` рассчитаны по всем активным партиям и не ограничены выборкой `batches` из 500 записей. `expiringBatches` содержит первые пять партий зоны предупреждения по сроку и ID для обзора. Полный список доступен через `GET /history/batches?status=warning&sort=oldest&page=1&size=20`.
-
-`PUT /settings` — полный объект:
+Ответ `201`, статус submitted, version=1. Количества исходного заказа неизменны. Поставщик отвечает `POST /procurement-requests/{id}/supplier-response`:
 
 ```json
-{"timezone":"Europe/Moscow","warningHours":48,"demandWindowDays":7,"planningHours":48,"leadTimeHours":12,"safetyFactor":0.2,"forecastHours":168}
+{"expectedVersion":1,"items":[{"lineId":"t","confirmedQuantity":8,"expiresAt":"2027-01-01T10:00:00Z","reason":"Подтверждено меньше"},{"lineId":"c","confirmedQuantity":0,"reason":"Нет в наличии"}]}
 ```
 
-`GET /events` — SSE: `sync {revision}` при каждом соединении, далее `change {id,type,at}` с полем `id: N`. `Last-Event-ID` воспроизводит события после курсора. Получив sync/change, клиент перечитывает snapshot: состояние восстанавливается даже при пропущенных событиях. Heartbeat каждые 1 с. Журнал событий хранится в той же транзакции с операцией склада.
+Каждая строка обязательна ровно один раз. При уменьшении/отказе нужна причина. Ответ: `{procurementRequest,deliveryRequestId}`; partially_accepted, version=2, связанная поставка submitted. Склад пока не меняется. Доступны expiresAt или expiryDate (конец ресторанного дня), manufacturedAt/shelfLifeHours; положительное количество требует срока. Вычисленный абсолютный срок сохраняется; приёмка не отсчитывает хранение заново.
 
-Только `FLAGMAN_DEMO=true`: `POST /demo/seed` (безопасно повторять), `POST /demo/time {"hours":8}` (вперёд, 0<hours<=720), `POST /generator/start {"seed":42,"intervalSeconds":5}`, `POST /generator/stop`. `GET /generator` — running/seed/intervalSeconds/index/nextIndex/error. index — обработано в текущем запуске, nextIndex — следующий шаг последовательности. Повторный запуск с тем же seed продолжает с первого необработанного шага, включая перезапуск сервера. `GET /history/generatorEvents` — сохранённый журнал с пагинацией и поиском: at/seed/step/kind/entityId/status/summary; отклонённые заказы содержат причину нехватки, ошибки сохраняются без изменения склада. В production часы не сдвигаются и генератор не запускается.
+Самостоятельная поставка: `POST /delivery-requests` или `/deliveries`, `{number,items:[{productId,quantity,unit,expiresAt,...}]}`, 201 submitted. Автор берётся из principal, supplierId из тела не выбирает другого владельца. Старые id/createdAt/receivedAt не являются складской проводкой: фактический приход создаёт только менеджер при приёмке.
+
+Менеджер вызывает `POST /delivery-requests/{id}/acceptance`:
+
+```json
+{"expectedVersion":1,"items":[{"lineId":"DELIVERY_LINE_ID","acceptedQuantity":7,"reason":"1 кг брак"}]}
+```
+
+Все строки обязательны. Количество 0..заявленного; проверенный срок `verifiedExpiresAt` необязателен, исходный сохраняется. Срок <=now нельзя принять. Появляются одна Delivery, Batch=7000 g и receipt; request=partially_accepted с deliveryId. Полный отказ (все нули с причинами) не создаёт прихода. Два лота одного продукта сохраняются отдельно. Ответ и приёмка окончательные. Закупку submitted можно отменить `/cancel {expectedVersion}`.
+
+## Заказы, предложения, списание
+
+Официант/manager отправляет `POST /order-requests` или `/orders {items:[{dishId,portions}]}`: 201 submitted без расхода/резерва. Стоп-лист, архив и неверные порции запрещены. Manager вызывает `/order-requests/{id}/decision {expectedVersion,decision:"accept"|"reject",reason?}`. Рецепт изменился/архивирован: 409, заявка остаётся pending. Подтверждение повторно проверяет FEFO/сроки; shortage окончательно отклоняет без частичного расхода. Ручной отказ требует причины и не создаёт ложный дефицит. Pending не входит в продажи/спрос/потери.
+
+`PUT /dishes/{id}/offer {visibility:"auto"|"show"|"hide",emphasized,waiterNote,expectedVersion}`: первая версия ожидает 0. Пояснение <=240 символов. Акцент независим от доступности; архив не публикуется. `/waiter/offers` не содержит рецептов/цен.
+
+`POST /batches/{id}/write-off {}` с ключом, только manager: полный остаток просроченной партии; результат `{batchId,quantity,movementId}`. Fresh или уже пустая партия с новым key: 409. Старый key возвращает прежний результат. Movement write_off содержит actorId/reason=expired. Истечение само не обнуляет остаток; physical включает, usable исключает. Статусы fresh/warning/expired/consumed/written_off. Старые expiry считаются историческими списаниями, остатки не восстанавливаются.
+
+## Полная карта доступа
+
+Все защищённые маршруты допускают cookie и bearer. Фильтр владельца выполняется до count/page. Manager видит все документы. Supplier/waiter не получают manager snapshot или складскую историю.
+
+| Метод/маршрут | Роль | Ownership/проекция |
+|---|---|---|
+| GET live, health, ready; POST login | anonymous | Состояние процесса/вход |
+| GET session; POST logout; GET events | любая активная | Собственный principal; SSE только revision |
+| GET snapshot, analytics, ops/status | manager | Полный ресторан |
+| POST planning, scenario, orders/preview, deliveries/preview | manager | Только расчёт, без движений |
+| POST products, dishes; POST archive/{products\|dishes}/{id}; PUT settings | manager | Каталог/настройки ресторана |
+| GET history/{batches\|deliveries\|orders\|movements\|audit\|generatorEvents}; GET details/{batches\|deliveries\|orders}/{id} | manager | Складская история |
+| GET accounts; POST accounts; PUT accounts/{id}; GET/POST accounts/{id}/keys; DELETE keys/{id} | manager | Администрирование; последний manager защищён |
+| POST procurement-requests; POST procurement-requests/{id}/cancel | manager | Адресат должен быть активным supplier |
+| GET procurement-requests; GET supplier/procurement-requests; GET procurement-requests/{id} | manager/supplier | Supplier только supplierId=actorId |
+| POST procurement-requests/{id}/supplier-response | supplier | Только адресованная закупка |
+| POST delivery-requests, deliveries | manager/supplier | AuthorId=actorId; создаётся pending |
+| GET delivery-requests; GET supplier/delivery-requests; GET delivery-requests/{id} | manager/supplier | Supplier только authorId=actorId |
+| POST delivery-requests/{id}/acceptance | manager | Актуальный документ внутри транзакции |
+| POST order-requests, orders | manager/waiter | AuthorId=actorId; создаётся pending |
+| GET order-requests; GET waiter/order-requests; GET order-requests/{id} | manager/waiter | Waiter только authorId=actorId, без shortages/рецептов |
+| POST order-requests/{id}/decision | manager | Полное решение, актуальная рецептура/FEFO |
+| GET supplier/catalog | manager/supplier | Активные ID/name/unit |
+| GET waiter/menu, waiter/offers | manager/waiter | Названия/категория/порции без цен и рецептов |
+| PUT dishes/{id}/offer; GET offers/overrides | manager | Управление публикацией |
+| POST batches/{id}/write-off | manager | Просроченный положительный остаток |
+| GET operations/{scope}/{key} | роль scope | Только ключ actorId; без legacy обхода |
+| POST demo/seed, demo/time, generator/start, generator/stop; GET generator | manager | Запись демо только FLAGMAN_DEMO=true |
+
+Списки заявок: `{items,total,page,size}`, page>=1, size=1..100. Ошибки: 400 валидация, 401 вход, 403 роль/CSRF, 404 чужая/несуществующая запись, 409 версия/содержимое ключа/состояние, 429 вход, 503 занятый склад (повторить с тем же key).
+
+Аналитика сохраняет restaurant-calendar fromDate/toDate, timestamp from/to и произвольные `days=YYYY-MM-DD,...` внутри периода. Рейтинг блюд считает окончательные shortage orders один раз; стоимость списаний и цена раздельно по валютам. priceCoverage.kind=expiry объединяет old expiry + new write_off. Потери считаются по дате команды, не по времени истечения.
+
+SSE: `event: sync`, `data: {revision}`; затем `id: N`, `event: change`, `data: {revision:N}`. События не содержат чужие бизнес-данные. Клиент обновляет разрешённую проекцию; Last-Event-ID поддерживается. Истечение меняет сохранённую сигнатуру warning/expired и revision только при изменении, включая старт сервера.

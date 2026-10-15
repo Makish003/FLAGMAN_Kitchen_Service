@@ -9,7 +9,7 @@ public record Batch(string Id, string DeliveryId, string ProductId, decimal Init
     decimal? UnitCost = null, string? Currency = null);
 public record OrderItem(string DishId, int Portions);
 public record Order(string Id, DateTimeOffset CreatedAt, string Status, List<OrderItem> Items, List<Shortage> Shortages);
-public record Movement(string Id, string BatchId, string ProductId, decimal Quantity, string Kind, string? OrderId, DateTimeOffset At);
+public record Movement(string Id, string BatchId, string ProductId, decimal Quantity, string Kind, string? OrderId, DateTimeOffset At, string? ActorId = null, string? Reason = null);
 public record Shortage(string ProductId, string ProductName, string Unit, decimal Requested, decimal Available, decimal Missing, List<string> DishIds);
 public record ShortageEvent(string Id, string OrderId, DateTimeOffset At, Shortage Detail);
 public record DomainEvent(long Id, string Type, DateTimeOffset At);
@@ -29,6 +29,12 @@ public record Settings(string Timezone = "Europe/Moscow", decimal WarningHours =
     Dictionary<string, decimal>? ManualDailyDemand = null);
 public class State
 {
+    public List<UserAccount> Users { get; set; } = [];
+    public List<ApiCredential> Credentials { get; set; } = [];
+    public List<ProcurementRequest> ProcurementRequests { get; set; } = [];
+    public List<DeliveryRequest> DeliveryRequests { get; set; } = [];
+    public List<OrderRequest> OrderRequests { get; set; } = [];
+    public List<OfferOverride> OfferOverrides { get; set; } = [];
     public List<Product> Products { get; set; } = [];
     public List<Dish> Dishes { get; set; } = [];
     public List<Delivery> Deliveries { get; set; } = [];
@@ -40,7 +46,7 @@ public class State
     public List<RequestRecord> Requests { get; set; } = [];
     public List<AuditEntry> Audit { get; set; } = [];
     public List<GeneratorEvent> GeneratorEvents { get; set; } = [];
-    [System.Text.Json.Serialization.JsonIgnore] public string WarningSignature { get; set; } = "";
+    public string WarningSignature { get; set; } = "";
     [System.Text.Json.Serialization.JsonIgnore] public DateTimeOffset? TransactionRealNow { get; set; }
     public Settings Settings { get; set; } = new();
     public decimal DemoOffsetHours { get; set; }

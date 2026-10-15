@@ -48,11 +48,11 @@ async function run(){
         window.__REACT_DEVTOOLS_GLOBAL_HOOK__={supportsFiber:true,inject:()=>1,onCommitFiberRoot:()=>performance.mark('react-commit'),onCommitFiberUnmount:()=>{},checkDCE:()=>{}};
       });
       const page=await context.newPage();
-      await context.request.post(baseURL+'/api/login',{headers:{'X-Requested-With':'Flagman'},data:{password}});
+      await context.request.post(baseURL+'/api/login',{headers:{'X-Requested-With':'Flagman'},data:{login:'manager',password}});
       await context.request.post(baseURL+'/api/demo/seed',{headers:{'X-Requested-With':'Flagman'}});
       if(mode!=='before')for(let i=0;i<10;i++){
         const response=await context.request.post(baseURL+'/api/deliveries',{headers:{'X-Requested-With':'Flagman','Idempotency-Key':`motion-load-${i}`},data:{number:`MOTION-${i}`,items:Array.from({length:100},()=>({productId:'tomato',quantity:100,unit:'g',shelfLifeHours:72}))}});
-        if(!response.ok())throw Error(`Profile fixture failed: ${response.status()}`);
+        if(!response.ok())throw Error(`Profile fixture failed: ${response.status()}`);const submitted=await response.json();const acceptance=await context.request.post(baseURL+'/api/delivery-requests/'+submitted.id+'/acceptance',{headers:{'X-Requested-With':'Flagman','Idempotency-Key':`motion-accept-${i}`},data:{expectedVersion:submitted.version,items:submitted.items.map(l=>({lineId:l.id,acceptedQuantity:l.quantity}))}});if(!acceptance.ok())throw Error(`Profile acceptance failed: ${acceptance.status()}`);
       }
       await page.goto(baseURL);await page.locator('.date-line').waitFor();
       await page.waitForFunction(()=>document.querySelector('.section-motion')?.getAnimations().length===0||!document.querySelector('.section-motion'));

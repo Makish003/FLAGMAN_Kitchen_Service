@@ -52,11 +52,11 @@ public static class Demo
             for (var slot = 0; slot < orders.Count; slot++)
                 Inventory.PlaceOrder(history, new(orders[slot]), $"demo-history-v1-{day}-{slot}", received.AddHours(slot * 2 + 1));
             Inventory.PlaceOrder(history, new(menu.Select(d => new OrderItem(d.Id, 1000)).ToList()), $"demo-history-v1-rejected-{day}", received.AddHours(8));
-            Inventory.Expire(history, received.AddHours(12));
+            foreach(var b in history.Batches.Where(b=>b.RemainingQuantity>0&&b.ExpiresAt<=received.AddHours(12)).ToList()) Inventory.WriteOffExpired(history,b.Id,new("demo-history","manager"),"demo-"+b.Id,received.AddHours(12));
         }
         s.Deliveries.AddRange(history.Deliveries); s.Batches.AddRange(history.Batches);
         s.Orders.AddRange(history.Orders); s.Movements.AddRange(history.Movements);
-        s.Shortages.AddRange(history.Shortages); s.Requests.AddRange(history.Requests);
+        s.Shortages.AddRange(history.Shortages); s.Requests.AddRange(history.Requests); s.Audit.AddRange(history.Audit);
         s.Emit("demo.enriched", now);
         return updated + history.Deliveries.Count;
     }
@@ -92,7 +92,8 @@ public static class Demo
     public static object Generate(State s, int seed, int index, DateTimeOffset now)
     {
         var scope = index % 3 == 0 ? "delivery" : "order";
-        var existing = s.Requests.Find(r => r.Id == $"{scope}:generator-{seed}-{index}");
+        var actor=new Actor("demo-generator","manager");
+        var existing = s.Requests.Find(r => r.Id == $"{WorkflowService.Scope(actor,scope)}:generator-{seed}-{index}");
         if (existing is not null) return JsonSerializer.Deserialize<JsonElement>(existing.ResultJson, Store.Json);
         uint random = unchecked((uint)seed); for (var i = 0; i <= index * 4; i++) Next(ref random);
         var choice = Next(ref random); var amount = 1 + Next(ref random) % 3; var hours = 12 + Next(ref random) % 72;
@@ -100,9 +101,9 @@ public static class Demo
         if (index % 3 == 0)
         {
             var p = s.Products.OrderBy(x => x.Id, StringComparer.Ordinal).ElementAt((int)(choice % s.Products.Count));
-            return Inventory.Deliver(s, new($"ГЕН-{seed}-{index}", [Priced(p.Id, p.Unit == "pcs" ? amount * 10 : amount * 500, p.Unit, now.AddHours(hours))]), $"generator-{seed}-{index}", now);
+            return WorkflowService.SubmitDelivery(s, new($"ГЕН-{seed}-{index}", [Priced(p.Id, p.Unit == "pcs" ? amount * 10 : amount * 500, p.Unit, now.AddHours(hours))]), actor, $"generator-{seed}-{index}", now);
         }
         var d = s.Dishes.OrderBy(x => x.Id, StringComparer.Ordinal).ElementAt((int)(choice % s.Dishes.Count));
-        return Inventory.PlaceOrder(s, new([new(d.Id, (int)amount)]), $"generator-{seed}-{index}", now);
+        return WorkflowService.SubmitOrder(s, new([new(d.Id, (int)amount)]), actor, $"generator-{seed}-{index}", now,validateAvailability:false);
     }
 }

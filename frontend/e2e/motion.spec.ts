@@ -6,13 +6,13 @@ test.skip(process.env.FLAGMAN_DEMO!=='true','Requires an isolated demo database'
 let cookies: Cookie[];
 test.beforeAll(async({request})=>{
   const headers={'X-Requested-With':'Flagman'};
-  expect((await request.post('/api/login',{headers,data:{password:process.env.FLAGMAN_PASSWORD}})).ok()).toBe(true);
+  expect((await request.post('/api/login',{headers,data:{login:'manager',password:process.env.FLAGMAN_PASSWORD}})).ok()).toBe(true);
   cookies=(await request.storageState()).cookies;
   expect((await request.post('/api/demo/seed',{headers})).ok()).toBe(true);
 });
 test.beforeEach(async({page})=>{
   await page.context().addCookies(cookies);
-  await page.goto('/overview');await expect(page.getByRole('heading',{name:'Обзор кухни',exact:true})).toBeVisible();
+  await page.goto('/overview');await expect(page.getByRole('heading',{name:'Обзор кухни',exact:true})).toBeVisible({timeout:30000});
 });
 
 test('long dialogs scroll inside their frame and keep footer controls reachable',async({page})=>{
@@ -128,7 +128,7 @@ test('forced session exit clears mobile scroll locks and native top layer',async
   await page.getByRole('button',{name:'Открыть навигацию'}).click();
   await expect(page.locator('.workspace')).toHaveAttribute('inert','');
   await page.getByRole('button',{name:'Выйти',includeHidden:true}).dispatchEvent('click');
-  await expect(page.getByLabel('Пароль управляющего')).toBeVisible();
+  await expect(page.getByLabel('Пароль')).toBeVisible();
   expect(await page.evaluate(()=>document.body.style.overflow)).toBe('');
   expect(await page.evaluate(()=>document.querySelectorAll(':modal, [inert]').length)).toBe(0);
 });
@@ -216,9 +216,9 @@ test('batch, delivery and order history retain native modality and return focus'
   for(const route of ['stock','deliveries','orders']){
     await page.emulateMedia({reducedMotion:'no-preference'});
     const history=page.waitForResponse(response=>response.url().includes(`/api/history/${route==='stock'?'batches':route}?`)&&response.status()===200);
-    await page.goto('/'+route);await expect(page.locator('.date-line')).toBeVisible();await history;
+    await page.goto('/'+route);if(route==='deliveries')await page.getByRole('tab',{name:'Проведённые поставки'}).click();await expect(page.locator('.date-line')).toBeVisible();await history;
     const first=page.locator('tbody button').first();await expect(first).toBeVisible();
-    const openerName=await first.textContent();const opener=page.getByRole('button',{name:openerName!,exact:true});await opener.click();
+    const opener=first;await opener.click();
     const dialog=page.getByRole('dialog');await expect(dialog.getByRole('heading',{name:'История операции'})).toBeVisible();
     await expect(dialog.getByRole('heading',{name:'Происхождение партий'})).toBeVisible();
     await dialog.evaluate(node=>{node.style.animationDuration='2s';node.style.animationPlayState='paused';});

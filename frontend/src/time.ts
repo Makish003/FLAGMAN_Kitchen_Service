@@ -13,3 +13,5 @@ export function restaurantUtc(value: string, zone: string): string {
   if(matches.length!==1)throw new Error('Время пропущено или неоднозначно из-за перевода часов. Выберите другое время.');
   return new Date(matches[0]).toISOString();
 }
+
+export function restaurantLocal(value:string,zone:string){const parts=new Intl.DateTimeFormat('en-CA',{timeZone:zone,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(new Date(value));const p=(type:string)=>parts.find(x=>x.type===type)?.value;return p('year')+'-'+p('month')+'-'+p('day')+'T'+p('hour')+':'+p('minute');}

@@ -13,9 +13,11 @@ public static class Inventory
         => Require(quantity > 0 && quantity <= 1_000_000_000m && decimal.Round(quantity, 3) == quantity, "Количество должно быть положительным, не более 1 млрд и до 3 знаков после запятой");
     public static decimal ConvertQuantity(decimal quantity, string from, string to)
     {
-        ValidateQuantity(quantity);
-        return (from, to) switch { ("kg", "g") or ("l", "ml") => quantity * 1000,
+        Require(quantity > 0 && quantity <= 1_000_000_000m, "Количество должно быть положительным и не более 1 млрд");
+        var normalized = (from, to) switch { ("kg", "g") or ("l", "ml") => quantity * 1000,
             _ when from == to => quantity, _ => throw new DomainException("Несовместимые единицы измерения") };
+        ValidateQuantity(normalized);
+        return normalized;
     }
     public static T Once<T>(State s, string scope, string key, object input, Func<T> action)
     {
@@ -134,16 +136,22 @@ public static class Inventory
         }
         Require(amount == 0, "Нарушен инвариант доступности", 500);
     }
-    public static int Expire(State s, DateTimeOffset now)
+    public static string BatchStatus(State s,Batch b,DateTimeOffset now)
+        => b.RemainingQuantity==0 ? (s.Movements.Any(m=>m.BatchId==b.Id&&m.Kind is "expiry" or "write_off") ? "written_off" : "consumed") : b.ExpiresAt<=now ? "expired" : b.ExpiresAt<=now.AddHours((double)Math.Min(Product(s,b.ProductId).WarningHours,s.Settings.WarningHours)) ? "warning" : "fresh";
+    public static int Expire(State s,DateTimeOffset now)
     {
-        var expired = s.Batches.Where(b => b.RemainingQuantity > 0 && b.ExpiresAt <= now).ToList();
-        foreach (var b in expired)
-        {
-            s.Movements.Add(new(Id(), b.Id, b.ProductId, -b.RemainingQuantity, "expiry", null, now));
-            s.Batches[s.Batches.FindIndex(x => x.Id == b.Id)] = b with { RemainingQuantity = 0 };
-        }
-        if (expired.Count > 0) s.Emit("expiry.written-off", now);
-        return expired.Count;
+        var signature=string.Join(",",s.Batches.Where(b=>b.RemainingQuantity>0).Select(b=>new{b.Id,Status=BatchStatus(s,b,now)}).Where(b=>b.Status is "warning" or "expired").OrderBy(b=>b.Id).Select(b=>b.Id+":"+b.Status));
+        if(signature!=s.WarningSignature){s.WarningSignature=signature;s.Emit("time.changed",now);}return 0;
+    }
+    public static WriteOffResult WriteOffExpired(State s,string batchId,Actor actor,string key,DateTimeOffset now)
+    {
+        AccessService.RequireRole(actor,"manager");
+        return Once(s,WorkflowService.Scope(actor,"write-off"),key,new{batchId},()=>{
+            var b=s.Batches.Find(x=>x.Id==batchId)??throw new DomainException("Партия не найдена",404);
+            Require(b.RemainingQuantity>0&&b.ExpiresAt<=now,"Можно списать только остаток просроченной партии",409);
+            var m=new Movement(Id(),b.Id,b.ProductId,-b.RemainingQuantity,"write_off",null,now,actor.UserId,"expired");s.Movements.Add(m);s.Batches[s.Batches.IndexOf(b)]=b with{RemainingQuantity=0};
+            AccessService.Audit(s,actor,"batch.written-off",batchId,now);return new WriteOffResult(batchId,b.RemainingQuantity,m.Id);
+        });
     }
     public static void ValidateSettings(Settings settings)
     {

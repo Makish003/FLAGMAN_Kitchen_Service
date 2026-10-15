@@ -1,0 +1,4 @@
+async function post(base,headers,path,body,key){const response=await fetch(base+'/api'+path,{method:'POST',headers:{...headers,'Idempotency-Key':key},body:JSON.stringify(body)});if(!response.ok)throw Error(`Workflow ${path}: ${response.status}`);return response.json();}
+async function acceptDelivery(base,headers,request,key){return post(base,headers,'/delivery-requests/'+request.id+'/acceptance',{expectedVersion:request.version,items:request.items.map(l=>({lineId:l.id,acceptedQuantity:l.quantity}))},key);}
+async function acceptOrder(base,headers,request,key){const result=await post(base,headers,'/order-requests/'+request.id+'/decision',{expectedVersion:request.version,decision:'accept'},key);if(result.status!=='accepted')throw Error('Load/smoke order was rejected');return result;}
+module.exports={post,acceptDelivery,acceptOrder};

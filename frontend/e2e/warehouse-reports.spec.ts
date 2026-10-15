@@ -11,7 +11,7 @@ async function fixture(page:Page,empty=false) {
   await page.route('**/api/**',route=>{
     const pathname=new URL(route.request().url()).pathname;
     if(pathname==='/api/events')return route.fulfill({contentType:'text/event-stream',body:': connected\n\n'});
-    return route.fulfill({json:pathname==='/api/session'?{name:'Управляющий',demo:!empty}:pathname.startsWith('/api/history/')?{items:[],total:0}:pathname==='/api/scenario'?scenario:pathname==='/api/analytics'?data.analytics:data});
+    return route.fulfill({json:['/api/delivery-requests','/api/order-requests','/api/procurement-requests'].includes(pathname)?{items:[],total:0,page:1,size:50}:['/api/accounts','/api/offers/overrides'].includes(pathname)?[]:pathname==='/api/session'?{id:'mock-manager',role:'manager',name:'Управляющий',demo:!empty}:pathname.startsWith('/api/history/')?{items:[],total:0}:pathname==='/api/scenario'?scenario:pathname==='/api/analytics'?data.analytics:data});
   });
 }
 test('stop-list opens a calculated purchase plan and transfers quantities to a draft',async({page})=>{
@@ -20,9 +20,9 @@ test('stop-list opens a calculated purchase plan and transfers quantities to a d
   await expect(page).toHaveURL(/procurement$/);
   await expect(page.getByLabel('Закупить Томаты')).toHaveValue('1600');
   await page.getByRole('button',{name:'Создать черновик поставки'}).click();
-  const dialog=page.getByRole('dialog');await expect(dialog).toBeVisible();
-  await expect(dialog.getByLabel('Количество',{exact:true}).first()).toHaveValue('1600');
-  await expect(dialog.getByLabel('Количество',{exact:true}).nth(1)).toHaveValue('960');
+  await expect(page.getByRole('heading',{name:'Заявки поставщикам',exact:true})).toBeVisible();
+  await expect(page.locator('.workflow-line').getByLabel('Количество',{exact:true}).first()).toHaveValue('1600');
+  await expect(page.locator('.workflow-line').getByLabel('Количество',{exact:true}).nth(1)).toHaveValue('960');
 });
 test('empty production warehouse has honest, compact states and inset report content',async({page})=>{
   await fixture(page,true);
@@ -146,7 +146,7 @@ test('delivery journals use separate rounded records and keep both navigation ac
   await fixture(page);
   const deliveries=[{id:'delivery-1',number:'П-101',createdAt:now,receivedAt:now,batchIds:['batch-1']},{id:'delivery-2',number:'П-102',createdAt:now,receivedAt:now,batchIds:['batch-2']}];
   await page.route('**/api/history/deliveries?**',route=>route.fulfill({json:{items:deliveries,total:2}}));
-  await page.goto('/deliveries');
+  await page.goto('/deliveries');await page.getByRole('tab',{name:'Проведённые поставки'}).click();
   const table=page.locator('.record-table');
   await expect(table.locator('tbody tr')).toHaveCount(2);
   const gap=await table.evaluate(table=>{const rows=table.querySelectorAll('tbody tr');return rows[1].getBoundingClientRect().top-rows[0].getBoundingClientRect().bottom;});

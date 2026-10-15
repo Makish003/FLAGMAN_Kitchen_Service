@@ -2,6 +2,21 @@ using Flagman;
 using System.Diagnostics;
 using System.Text.Json;
 
+try
+{
+    Run(args);
+}
+catch (Exception error)
+{
+    Console.Error.WriteLine("FAIL Flagman.Tests");
+    Console.Error.WriteLine(error);
+    Environment.ExitCode = 1;
+}
+
+static void Run(string[] args)
+{
+if (args.Length==3&&args[0]=="--migration-copy") { MigrationCopyChecks.Run(args[1],args[2]); return; }
+if (args.Contains("--workflows")) { Console.WriteLine($"Workflow checks: {WorkflowChecks.Run()+AccessChecks.Run()+WorkflowBoundaryChecks.Run()}"); return; }
 var now = DateTimeOffset.Parse("2026-10-10T09:00:00Z");
 if (args.Length > 0 && args[0] == "--compete")
 {
@@ -9,7 +24,13 @@ if (args.Length > 0 && args[0] == "--compete")
     return;
 }
 var passed = 0;
-void Test(string name, Action action) { action(); Console.WriteLine("PASS " + name); passed++; }
+void Test(string name, Action action)
+{
+    try { action(); }
+    catch { Console.Error.WriteLine("FAIL " + name); throw; }
+    Console.WriteLine("PASS " + name);
+    passed++;
+}
 void Assert(bool condition, string message = "Assertion failed") { if (!condition) throw new Exception(message); }
 void Throws(Action action, int status = 400) { try { action(); } catch (DomainException e) { Assert(e.Status == status); return; } throw new Exception("Expected DomainException"); }
 State Base()
@@ -19,6 +40,7 @@ State Base()
     Inventory.SaveDish(s, new("b", "Блюдо Б", "Тест", [new("t", 500)]), now); return s;
 }
 void Delivery(State s, decimal quantity, DateTimeOffset expiry, string key = "d1") => Inventory.Deliver(s, new(key, [new("t", quantity, "g", expiry)]), key, now);
+int WriteExpired(State s,DateTimeOffset at){var rows=s.Batches.Where(b=>b.RemainingQuantity>0&&b.ExpiresAt<=at).ToList();foreach(var b in rows)Inventory.WriteOffExpired(s,b.Id,new("test-manager","manager"),"write-"+b.Id,at);return rows.Count;}
 void Invariants(State s)
 {
     foreach (var b in s.Batches) { Assert(b.RemainingQuantity >= 0); Assert(b.RemainingQuantity == s.Movements.Where(m => m.BatchId == b.Id).Sum(m => m.Quantity), "Movement reconciliation"); }
@@ -52,6 +74,14 @@ Test("R01–R05 R10 FEFO 2kg + 3kg / 2.5kg", () => {
     var o = Inventory.PlaceOrder(s, new([new("a", 5)]), "o1", now); Assert(o.Status == "accepted");
     Assert(s.Batches[0].RemainingQuantity == 0 && s.Batches[1].RemainingQuantity == 2500); Invariants(s);
 });
+Test("Unit conversion preserves fractional base quantities and validates normalized limits", () => {
+    Assert(Inventory.ConvertQuantity(1.7005m,"kg","g")==1700.5m);
+    Assert(Inventory.ConvertQuantity(1.234567m,"l","ml")==1234.567m);
+    Assert(Inventory.ConvertQuantity(0.000001m,"kg","g")==0.001m);
+    Throws(()=>Inventory.ConvertQuantity(1.2345678m,"kg","g"));
+    Throws(()=>Inventory.ConvertQuantity(1000001m,"kg","g"));
+    Throws(()=>Inventory.ConvertQuantity(1m,"l","g"));
+});
 Test("R07–R09 shared ingredients reject atomically", () => {
     var s = Base(); Delivery(s, 500, now.AddDays(1)); var o = Inventory.PlaceOrder(s, new([new("a", 1), new("b", 1)]), "o1", now);
     Assert(o.Status == "rejected" && o.Shortages[0].Missing == 500 && s.Batches[0].RemainingQuantity == 500); Assert(s.Movements.Count == 1); Invariants(s);
@@ -65,8 +95,8 @@ Test("R01 R09 R19 idempotency accepted / rejected / conflict", () => {
 });
 Test("R04 R11 R12 R17 exact expiry, repeated write-off and replenishment", () => {
     var s = Base(); Delivery(s, 500, now.AddHours(1)); Assert(Inventory.Portions(s,s.Dishes[0],now)==1);
-    var boundary = now.AddHours(1); Assert(Inventory.Portions(s,s.Dishes[0],boundary)==0); Assert(Inventory.Expire(s,boundary)==1); Assert(Inventory.Expire(s,boundary)==0);
-    Assert(s.Movements.Count(m=>m.Kind=="expiry")==1); Delivery(s,500,now.AddDays(2),"new");Assert(Inventory.Portions(s,s.Dishes[0],boundary)==1);Invariants(s);
+    var boundary = now.AddHours(1); Assert(Inventory.Portions(s,s.Dishes[0],boundary)==0); Inventory.Expire(s,boundary); Assert(s.Batches[0].RemainingQuantity==500); Assert(WriteExpired(s,boundary)==1); Assert(WriteExpired(s,boundary)==0);
+    Assert(s.Movements.Count(m=>m.Kind=="write_off")==1); Delivery(s,500,now.AddDays(2),"new");Assert(Inventory.Portions(s,s.Dishes[0],boundary)==1);Invariants(s);
 });
 Test("R02 R06 validation units and recipes", () => {
     var s = Base(); Assert(Inventory.ConvertQuantity(2.5m,"kg","g")==2500);
@@ -87,7 +117,7 @@ Test("R14–R16 urgency monotonic, shared sale plan, unavailable excluded", () =
 Test("R13 R18 R19 analytics and manual procurement", () => {
     var s = Base();s.Settings=s.Settings with {DemandWindowDays=1,PlanningHours=24,LeadTimeHours=0,SafetyFactor=0};Delivery(s,1000,now.AddHours(2));
     Inventory.PlaceOrder(s,new([new("a",1)]),"o",now);Inventory.PlaceOrder(s,new([new("b",2)]),"r",now);
-    var purchase=Insights.Purchases(s,now);Assert(purchase.Count==0);Inventory.Expire(s,now.AddHours(2));purchase=Insights.Purchases(s,now.AddHours(2));Assert(purchase.Single().Quantity==500);
+    var purchase=Insights.Purchases(s,now);Assert(purchase.Count==0);WriteExpired(s,now.AddHours(2));purchase=Insights.Purchases(s,now.AddHours(2));Assert(purchase.Single().Quantity==500);
     var analytics=JsonSerializer.Serialize(Insights.Analytics(s,now,now.AddHours(3)),Store.Json);using var json=JsonDocument.Parse(analytics);var p=json.RootElement.GetProperty("products")[0];
     Assert(p.GetProperty("consumed").GetDecimal()==500&&p.GetProperty("wasted").GetDecimal()==500&&p.GetProperty("shortageCount").GetInt32()==1);Invariants(s);
 });
@@ -140,7 +170,7 @@ Test("Analytics price coverage separates receipts, consumption and losses", () =
     Inventory.Deliver(s,new("priced",[new("t",1000,"g",now.AddHours(1),UnitCost:2,Currency:"RUB")]),"priced",now);
     Delivery(s,1000,now.AddHours(2),"unknown");
     Inventory.PlaceOrder(s,new([new("a",3)]),"mixed",now);
-    Inventory.Expire(s,now.AddHours(2));
+    WriteExpired(s,now.AddHours(2));
     var a = JsonSerializer.SerializeToElement(Insights.Analytics(s,now,now.AddHours(2)),Store.Json);
     var coverage = a.GetProperty("priceCoverage").EnumerateArray().ToList();
     Assert(coverage[0].GetProperty("total").GetInt32()==2 && coverage[0].GetProperty("priced").GetInt32()==1);
@@ -157,10 +187,10 @@ Test("Selected calendar days exclude gaps and rank unique rejected orders and pr
         s.Orders.Add(new("rejected-"+i,at,"rejected",[new("a",2)],[shortage,shortage]));
         s.Shortages.Add(new("shortage-"+i,"rejected-"+i,at,shortage));
         Inventory.Deliver(s,new("priced-"+i,[new("t",10,"g",at.AddHours(1),UnitCost:2,Currency:i==3?"USD":"RUB")]),"priced-"+i,at);
-        Inventory.Expire(s,at.AddHours(1));
+        WriteExpired(s,at.AddHours(1));
     }
     Inventory.Deliver(s,new("unknown",[new("t",10,"g",first.AddDays(3).AddHours(3))]),"unknown",first.AddDays(3));
-    Inventory.Expire(s,first.AddDays(3).AddHours(3));
+    WriteExpired(s,first.AddDays(3).AddHours(3));
     var chosen=new HashSet<DateOnly>{new(2026,10,1),new(2026,10,2),new(2026,10,4)};
     var a=JsonSerializer.SerializeToElement(Insights.Analytics(s,first,first.AddDays(4).AddTicks(-1),chosen),Store.Json);
     Assert(a.GetProperty("ordersRejected").GetInt32()==3);
@@ -190,7 +220,7 @@ Test("Demo prices cover seed, generator, consumption and expiry", () => {
     Assert(s.Batches.First(b => b.ProductId == "egg").UnitCost == 12m);
     for (var i = 0; i < 30; i++) Demo.Generate(s, 42, i, now);
     Assert(s.Batches.All(b => b.UnitCost > 0 && b.Currency == "RUB"));
-    Inventory.Expire(s, now.AddDays(31));
+    WriteExpired(s, now.AddDays(31));
     var a = JsonSerializer.SerializeToElement(Insights.Analytics(s, now, now.AddDays(31)), Store.Json);
     foreach (var coverage in a.GetProperty("priceCoverage").EnumerateArray())
         Assert(coverage.GetProperty("total").GetInt32() > 0 && coverage.GetProperty("priced").GetInt32() == coverage.GetProperty("total").GetInt32());
@@ -257,18 +287,48 @@ Test("R22 deterministic generator sequence", () => {
     var movementCount=a.Movements.Count;for(var i=0;i<15;i++)Demo.Generate(a,42,i,now.AddHours(1));Assert(a.Movements.Count==movementCount,"Restart seed must not duplicate events");
 });
 var testDir=Path.Combine(Path.GetTempPath(),"flagman-tests-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(testDir);
+Test("Idle monitor does not invalidate calculations on startup or minute heartbeat", () => {
+    var store=new Store(Path.Combine(testDir,"idle-monitor.db"));
+    var worker=new Flagman.Monitor(store,new Generator(store),Microsoft.Extensions.Logging.Abstractions.NullLogger<Flagman.Monitor>.Instance);
+    var revision=store.Metadata().Revision;
+    worker.StartAsync(CancellationToken.None).GetAwaiter().GetResult();
+    try {
+        Task.Delay(2200).GetAwaiter().GetResult();
+        Assert(store.Metadata().Revision==revision,"Idle monitor startup changed warehouse revision");
+        Task.Delay(61000).GetAwaiter().GetResult();
+        Assert(store.Metadata().Revision==revision,"Minute heartbeat changed warehouse revision");
+    } finally { worker.StopAsync(CancellationToken.None).GetAwaiter().GetResult();worker.Dispose(); }
+});
+Test("Last delivery price includes consumed history outside dashboard sample", () => {
+    var store=new Store(Path.Combine(testDir,"last-delivery-price.db"));
+    var receipt=DateTimeOffset.UtcNow.AddDays(-100);
+    store.Write(s=>{
+        Inventory.AddProduct(s,new("t","Томаты","g"),receipt);
+        for(var i=0;i<501;i++)s.Batches.Add(new("old-"+i,"old-delivery","t",100,0,receipt.AddDays(-10),receipt.AddDays(-9),null,null,"explicit",0.2m,"RUB"));
+        s.Batches.Add(new("last","last-delivery","t",100,0,receipt,receipt.AddDays(1),null,null,"explicit",0.4m,"USD"));
+        return 0;
+    });
+    var snapshot=JsonSerializer.SerializeToElement(store.Dashboard(),Store.Json);
+    Assert(snapshot.GetProperty("batches").GetArrayLength()==500);
+    var product=snapshot.GetProperty("products")[0];
+    Assert(product.GetProperty("lastUnitCost").GetDecimal()==0.4m);
+    Assert(product.GetProperty("lastCurrency").GetString()=="USD");
+    store.Write(s=>{s.Batches.Add(new("unknown","unknown-delivery","t",100,0,receipt.AddDays(2),receipt.AddDays(3),null,null,"explicit"));return 0;});
+    product=JsonSerializer.SerializeToElement(store.Dashboard(),Store.Json).GetProperty("products")[0];
+    Assert(product.GetProperty("lastUnitCost").ValueKind==JsonValueKind.Null,"Unknown latest price must not reuse an older price");
+});
 Test("Generator resumes persisted seed and commits visible entities with durable log", () => {
     var store=new Store(Path.Combine(testDir,"generator.db"));
     store.Write(s=>{Inventory.AddProduct(s,new("t","Томаты","g"),now);Inventory.SaveDish(s,new("a","Блюдо","Тест",[new("t",10000)]),now);Demo.Generate(s,42,0,s.Now(DateTimeOffset.UtcNow));return 0;});
     var generator=new Generator(store);generator.Start(new(42,1));generator.Tick();generator.Stop();
-    var state=store.Read(s=>s);Assert(state.Deliveries.Count==1 && state.Orders.Count==1,"Restart must create next order instead of replaying delivery");
+    var state=store.Read(s=>s);Assert(state.DeliveryRequests.Count==1 && state.OrderRequests.Count==1,"Restart must create next order instead of replaying delivery");
     var log=JsonSerializer.SerializeToElement(store.History("generatorEvents",1,20,null,null),Store.Json);
-    var entry=log.GetProperty("items")[0];Assert(entry.GetProperty("step").GetInt32()==1 && entry.GetProperty("status").GetString()=="rejected");
-    Assert(entry.GetProperty("entityId").GetString()==state.Orders[0].Id && entry.GetProperty("summary").GetString()!.Contains("не хватает"));
+    var entry=log.GetProperty("items")[0];Assert(entry.GetProperty("step").GetInt32()==1 && entry.GetProperty("status").GetString()=="submitted");
+    Assert(entry.GetProperty("entityId").GetString()==state.OrderRequests[0].Id && entry.GetProperty("summary").GetString()!.Contains("Ожидает"));
     generator=new Generator(new Store(Path.Combine(testDir,"generator.db")));generator.Start(new(42,1));generator.Tick();generator.Stop();
-    Assert(store.Read(s=>s.Orders.Count)==2,"New generator instance must continue persisted progress");
+    Assert(store.Read(s=>s.OrderRequests.Count)==2,"New generator instance must continue persisted progress");
     generator.Start(new(42,1));generator.Tick();generator.Stop();
-    Assert(store.Read(s=>s.Deliveries.Count)==2,"Step 3 must persist a new delivery");
+    Assert(store.Read(s=>s.DeliveryRequests.Count)==2,"Step 3 must persist a new delivery");
     Assert(JsonSerializer.SerializeToElement(store.History("generatorEvents",1,20,null,null),Store.Json).GetProperty("total").GetInt32()==3);
     var empty=new Store(Path.Combine(testDir,"generator-empty.db"));var failed=new Generator(empty);failed.Start(new(1,1));failed.Tick();
     Assert(JsonSerializer.SerializeToElement(failed.Status,Store.Json).GetProperty("error").GetString()!.Contains("Сначала"));
@@ -334,12 +394,12 @@ try {
     });
     Test("H13 dashboard prices resolve expired batches beyond UI page limit",()=>{
         var store=new Store(Path.Combine(testDir,"historical-prices.db"));var real=DateTimeOffset.UtcNow;
-        store.Write(s=>{var f=Base();s.Products=f.Products;s.Dishes=f.Dishes;for(var i=0;i<600;i++)Inventory.Deliver(s,new("priced-history-"+i,[new("t",100,"g",real.AddHours(1),UnitCost:1,Currency:"RUB")]),"priced-"+i,real);Inventory.Expire(s,real.AddHours(1));s.DemoOffsetHours=2;return 0;});
+        store.Write(s=>{var f=Base();s.Products=f.Products;s.Dishes=f.Dishes;for(var i=0;i<600;i++)Inventory.Deliver(s,new("priced-history-"+i,[new("t",100,"g",real.AddHours(1),UnitCost:1,Currency:"RUB")]),"priced-"+i,real);WriteExpired(s,real.AddHours(1));s.DemoOffsetHours=2;return 0;});
         var dashboard=JsonSerializer.SerializeToElement(store.Dashboard(),Store.Json);Assert(dashboard.GetProperty("batches").GetArrayLength()==500);Assert(dashboard.GetProperty("analytics").GetProperty("costs")[0].GetProperty("wasted").GetDecimal()==60000);store.VerifyIntegrity();
     });
     Test("H12 v2 to v3 backup, unknown old prices and restored journals",()=>{
         var path=Path.Combine(testDir,"prices-v2.db");new Store(path).Write(s=>{var f=Base();s.Products=f.Products;s.Dishes=f.Dishes;Delivery(s,1000,now.AddDays(1));return 0;});
-        using(var db=new Microsoft.Data.Sqlite.SqliteConnection("Data Source="+path)){db.Open();using var cmd=db.CreateCommand();cmd.CommandText="DELETE FROM schema_migrations WHERE version=3; UPDATE batches SET payload=json_remove(payload,'$.unitCost','$.currency');";cmd.ExecuteNonQuery();}
+        using(var db=new Microsoft.Data.Sqlite.SqliteConnection("Data Source="+path)){db.Open();using var cmd=db.CreateCommand();cmd.CommandText="DELETE FROM schema_migrations WHERE version>=3; UPDATE batches SET payload=json_remove(payload,'$.unitCost','$.currency');";cmd.ExecuteNonQuery();}
         var migrated=new Store(path);CheckPrices(migrated);var copy=Directory.GetFiles(testDir,"prices-v2.db.pre-v3-*.db").Single();CheckPrices(new Store(copy));
         void CheckPrices(Store store){store.VerifyIntegrity();store.Read(s=>{Assert(s.Batches.Single().UnitCost is null && s.Batches.Single().RemainingQuantity==1000 && s.Movements.Count==1);return 0;});}
     });
@@ -382,8 +442,8 @@ try {
     Test("R01 R09 rollback invalid second line and persistence after restart", () => {
         var path=Path.Combine(testDir,"rollback.db");var store=new Store(path);store.Write(s=>{var fixture=Base();s.Products=fixture.Products;s.Dishes=fixture.Dishes;return 0;});
         Throws(()=>store.Write(s=>Inventory.Deliver(s,new("bad",[new("t",500,"g",now.AddDays(1)),new("missing",500,"g",now.AddDays(1))]),"bad",now)));
-        Assert(store.Read(s=>s.Batches.Count)==0);store.Write(s=>{Delivery(s,500,now.AddHours(1));return 0;});new Store(path).Write(s=>Inventory.Expire(s,now.AddHours(1)));
-        new Store(path).Write(s=>Inventory.Expire(s,now.AddHours(1)));new Store(path).Read(s=>{Assert(s.Movements.Count(m=>m.Kind=="expiry")==1);Invariants(s);return 0;});
+        Assert(store.Read(s=>s.Batches.Count)==0);store.Write(s=>{Delivery(s,500,now.AddHours(1));return 0;});new Store(path).Write(s=>WriteExpired(s,now.AddHours(1)));
+        new Store(path).Write(s=>WriteExpired(s,now.AddHours(1)));new Store(path).Read(s=>{Assert(s.Movements.Count(m=>m.Kind=="write_off")==1);Invariants(s);return 0;});
     });
     Test("R08 R09 independent processes contend for final portion", () => {
         var path=Path.Combine(testDir,"processes.db");var store=new Store(path);store.Write(s=>{var fixture=Base();s.Products=fixture.Products;s.Dishes=fixture.Dishes;Delivery(s,500,now.AddDays(1));return 0;});
@@ -430,4 +490,6 @@ try {
     });
     testSucceeded=true;
 } finally { Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();if(testSucceeded)Directory.Delete(testDir,true);else Console.WriteLine("Failed domain databases retained: "+testDir); }
+passed+=WorkflowChecks.Run()+AccessChecks.Run()+WorkflowBoundaryChecks.Run();
 Console.WriteLine($"{passed} critical domain / real database checks passed.");
+}

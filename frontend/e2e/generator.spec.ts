@@ -2,7 +2,7 @@ import {test,expect} from '@playwright/test';
 
 test('generator API commits orders and deliveries and retains the event journal',async({request})=>{
   const headers={'X-Requested-With':'Flagman'};
-  expect((await request.post('/api/login',{headers,data:{password:process.env.FLAGMAN_PASSWORD!}})).ok()).toBe(true);
+  expect((await request.post('/api/login',{headers,data:{login:'manager',password:process.env.FLAGMAN_PASSWORD!}})).ok()).toBe(true);
   await request.post('/api/demo/seed',{headers});
   await request.post('/api/generator/stop',{headers});
   const seed=Date.now()%1000000000;
@@ -13,11 +13,10 @@ test('generator API commits orders and deliveries and retains the event journal'
   const history=await(await request.get(`/api/history/generatorEvents?q=${seed}`)).json();
   expect(history.total).toBe(state.index);
   for(const event of history.items){
-    const entity=event.kind==='delivery'?'deliveries':'orders';
-    const details=await(await request.get(`/api/details/${entity}/${event.entityId}`)).json();
-    expect(details.entity.id).toBe(event.entityId);
-    if(event.kind==='delivery') expect(details.movements.length).toBeGreaterThan(0);
-    else expect(details.entity.status).toBe(event.status);
+    const entity=event.kind==='delivery'?'delivery-requests':'order-requests';
+    const details=await(await request.get(`/api/${entity}/${event.entityId}`)).json();
+    expect(details.id).toBe(event.entityId);
+    expect(details.status).toBe('submitted');
   }
   await request.post('/api/generator/start',{headers,data:{seed,intervalSeconds:1}});
   await expect.poll(async()=>(await(await request.get('/api/generator')).json()).nextIndex,{timeout:20000}).toBeGreaterThan(state.nextIndex);
@@ -26,11 +25,11 @@ test('generator API commits orders and deliveries and retains the event journal'
 
 test('generator persists visible operations, logs results and resumes the same seed',async({page,request})=>{
   const headers={'X-Requested-With':'Flagman'};
-  await request.post('/api/login',{headers,data:{password:process.env.FLAGMAN_PASSWORD!}});
+  await request.post('/api/login',{headers,data:{login:'manager',password:process.env.FLAGMAN_PASSWORD!}});
   await request.post('/api/demo/seed',{headers});
   await request.post('/api/generator/stop',{headers});
   await page.goto('/generator');
-  await page.getByLabel('Пароль управляющего').fill(process.env.FLAGMAN_PASSWORD!);
+  await page.getByLabel('Пароль').fill(process.env.FLAGMAN_PASSWORD!);
   await page.getByRole('button',{name:'Открыть кухню'}).click();
   const seed=Date.now()%1000000000;
   await page.getByLabel('Seed',{exact:true}).fill(String(seed));
@@ -42,11 +41,11 @@ test('generator persists visible operations, logs results and resumes the same s
   const status=await(await request.get('/api/generator')).json();
   const history=await(await request.get(`/api/history/generatorEvents?size=100&q=${seed}`)).json();
   expect(history.items.length).toBe(status.index);
-  const log=page.locator('.generator-log');
+  const log=page.locator('.generator-log');await log.getByLabel('Поиск по всей истории').fill(String(seed));
   await expect(log.locator('tbody tr')).toHaveCount(status.index);
   const snapshot=await(await request.get('/api/snapshot')).json();
   for(const event of history.items){
-    const entities=event.kind==='delivery'?snapshot.deliveries:snapshot.orders;
+    const entities=(await(await request.get('/api/'+(event.kind==='delivery'?'delivery-requests':'order-requests')+'?size=100')).json()).items;
     expect(entities.some((entity:{id:string})=>entity.id===event.entityId)).toBe(true);
     await expect(log.getByRole('button',{name:'#'+event.entityId.slice(0,8).toUpperCase(),exact:true})).toBeVisible();
   }
@@ -58,7 +57,7 @@ test('generator persists visible operations, logs results and resumes the same s
   await expect(page.getByText(`ГЕН-${seed}-0`,{exact:true})).toBeVisible();
   await page.getByRole('navigation').getByRole('button',{name:'Заказы',exact:true}).click();
   const order=history.items.find((e:{kind:string})=>e.kind==='order');
-  await expect(page.getByRole('button',{name:'#'+order.entityId.slice(0,8).toUpperCase(),exact:true})).toBeVisible();
+  await expect(page.locator('.workflow-card').filter({hasText:order.entityId.slice(0,8)})).toBeVisible();
   await page.getByRole('navigation').getByRole('button',{name:'Демонстрация',exact:true}).click();
   await page.getByLabel('Seed',{exact:true}).fill(String(seed));
   await page.getByLabel('Интервал, секунд').fill('1');

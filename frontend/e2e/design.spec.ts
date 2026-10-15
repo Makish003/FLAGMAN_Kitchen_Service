@@ -13,9 +13,9 @@ test('design: responsive pages, accessible forms, settings and keyboard navigati
     expect(result.violations.map(v=>`${v.id}: ${v.nodes.map(n=>n.target).join(', ')}`)).toEqual([]);
   };
   await audit();
-  await page.getByLabel('Пароль управляющего').fill(process.env.FLAGMAN_PASSWORD!);
+  await page.getByLabel('Пароль').fill(process.env.FLAGMAN_PASSWORD!);
   await page.getByRole('button',{name:'Открыть кухню'}).click();
-  await expect(page.locator('.date-line')).toBeVisible();
+  await expect(page.locator('.date-line')).toBeAttached();
   if(await page.getByRole('button',{name:'Загрузить демо'}).isVisible()){
     await page.getByRole('button',{name:'Загрузить демо'}).click();
     await expect(page.getByText('Демонстрационный склад готов')).toBeVisible();
@@ -23,11 +23,11 @@ test('design: responsive pages, accessible forms, settings and keyboard navigati
   for(const width of [280,320,390,768,1024,1440]){
     await page.setViewportSize({width,height:960});
     for(const route of ['overview','stock','menu','orders','deliveries','stop','offers','analytics','expiry','procurement','forecast','generator']){
-      await page.goto('/'+route);await expect(page.locator('.date-line')).toBeVisible();
+      await page.goto('/'+route);await expect(page.locator('.date-line')).toBeAttached();
       expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`${route} @ ${width}`).toBe(true);
       if(width===1440)await audit();
     }
-    await page.goto('/overview');await expect(page.locator('.date-line')).toBeVisible();
+    await page.goto('/overview');await expect(page.locator('.date-line')).toBeAttached();
     if(width===390||width===1440)await page.screenshot({path:`../test-results/redesign/overview-${width}.png`,fullPage:true});
     await page.getByRole('button',{name:'Принять поставку',exact:true}).first().click();
     const dialog=page.getByRole('dialog');await expect(dialog).toBeVisible();

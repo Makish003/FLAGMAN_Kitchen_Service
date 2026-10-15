@@ -160,16 +160,23 @@ tbody tr:last-child td { border-bottom: 0; }
 .record-table td:last-child { border-radius: 0 var(--radius-control) var(--radius-control) 0; }
 .record-table tr.row-danger td { background: var(--semantic-status-danger-surface); }
 .record-table tr.row-warning td { background: var(--semantic-status-warning-surface); }
-.stock-products-table { min-width: 900px; border-spacing: 0 6px; }
+.operational-table td { font-size: var(--type-emphasis); font-weight: 550; }
+.operational-table td small { font-size: var(--type-small); font-weight: 400; }
+.operational-table td .badge,
+.operational-table td small.order-shortage { font-size: var(--type-emphasis); font-weight: 650; }
+.stock-products-table { min-width: 960px; border-spacing: 0 6px; }
 .stock-products-table th { padding: 10px 16px 6px; white-space: normal; }
 .stock-products-table td { padding: 12px 16px; line-height: 1.35; }
 .stock-products-table td:first-child { min-width: 180px; }
-.stock-products-table td:first-child strong { font-size: var(--type-body); }
-.stock-products-table td small { font-size: 12px; margin-top: 4px; }
-.stock-products-table th:nth-child(n+2):nth-child(-n+6),
+.stock-products-table td:first-child strong { font-size: var(--type-emphasis); }
+.stock-products-table td small { font-size: var(--type-small); margin-top: 4px; }
+.stock-products-table th:nth-child(n+2):nth-child(-n+5),
 .stock-products-table .stock-quantity,
 .stock-products-table .stock-threshold { text-align: right; }
-.stock-products-table .stock-quantity { font-size: 22px; font-weight: 650; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.stock-products-table .stock-quantity { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.stock-products-table .stock-unit { min-width: 100px; }
+.stock-products-table .stock-unit .select-control { width: 76px; margin-top: 0; }
+.quantity-recommendation { margin-top: 8px; font-size: var(--type-small); }
 .stock-products-table .stock-threshold { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .stock-products-table .stock-product-action { width: 1%; white-space: nowrap; }
 .stock-products-table .stock-product-action .text-button { font-size: var(--type-small); }
@@ -357,6 +364,7 @@ input[aria-invalid='true'] { border-color: var(--semantic-status-danger); }
 .preview-controls .form-hint { width: 100%; margin: 0; }
 .preview-controls > [role='status'] { margin: 0; color: var(--semantic-text-secondary); }
 .preview-result p:last-child { margin-bottom: 0; }
+.preview-result + .notice { margin-top: var(--space-5); }
 .form-section-title { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); margin: var(--space-5) 0 var(--space-3); }
 .form-section-title h3 { margin: 0; }
 .line-editor { min-width: 0; margin: 0 0 var(--space-5); border: 1px solid var(--semantic-border-default); border-radius: var(--radius-control); padding: var(--space-4); }
@@ -693,3 +701,7 @@ input { transition: border-color var(--motion-micro) var(--motion-easeStandard),
 .waste-currency h3 { margin: 0 0 16px; }
 
 .generator-log { grid-column: 1 / -1; min-width: 0; }
+
+.external-workspace{max-width:90rem;margin:auto;padding:1.5rem;background:var(--color-background,#f5f5f0);min-height:100vh}.external-workspace>header{display:flex;gap:1rem;align-items:center;flex-wrap:wrap;margin-bottom:1.5rem}.external-workspace>header>button{margin-left:auto}.external-workspace main{display:grid;gap:1.25rem}.workflow-list{margin-bottom:1.25rem}.workflow-card{border-top:1px solid #d9e0d9;padding:1rem 0;overflow-wrap:anywhere}.workflow-card p{margin:.5rem 0}.workflow-card small{display:block}.workflow-line{display:grid;grid-template-columns:repeat(auto-fit,minmax(9rem,1fr));gap:.75rem;align-items:end;margin:1rem 0}.workflow-list form,.external-workspace form{display:grid;gap:1rem}.workflow-list label,.external-workspace label{display:grid;gap:.4rem}.workflow-list fieldset,.external-workspace fieldset{min-width:0;border:1px solid #d9e0d9;border-radius:.5rem;padding:1rem}.api-token{display:block;overflow-wrap:anywhere;user-select:all;padding:1rem}.offer-emphasized{border:2px solid #bd811b;box-shadow:0 0 0 3px #f7e6bd}.stock-quantity:has(.expired),.expired-stock{color:#b83737}@media(max-width:40rem){.external-workspace{padding:.75rem}.workflow-line{grid-template-columns:1fr}.workflow-card button{margin:.25rem 0;width:100%}.workflow-list{padding:1rem}.workflow-list .history-pagination button{width:auto}}
+
+.reauth-overlay{position:fixed;inset:0;z-index:1000;overflow:auto;background:#f5f5f0}
