@@ -16,7 +16,8 @@ test('generator API commits orders and deliveries and retains the event journal'
     const entity=event.kind==='delivery'?'delivery-requests':'order-requests';
     const details=await(await request.get(`/api/${entity}/${event.entityId}`)).json();
     expect(details.id).toBe(event.entityId);
-    expect(details.status).toBe('submitted');
+    expect(details.status).toBe(event.status);expect(['submitted','rejected']).toContain(details.status);
+    expect(event.requestDocument).toBe(true);
   }
   await request.post('/api/generator/start',{headers,data:{seed,intervalSeconds:1}});
   await expect.poll(async()=>(await(await request.get('/api/generator')).json()).nextIndex,{timeout:20000}).toBeGreaterThan(state.nextIndex);
@@ -67,6 +68,11 @@ test('generator persists visible operations, logs results and resumes the same s
   await page.reload();
   await page.getByText('Журнал событий генератора',{exact:true}).click();
   await expect(log.locator('tbody tr').first()).toBeVisible();
+  await log.getByLabel('Поиск по всей истории').fill(String(seed));
+  await log.getByRole('button',{name:'#'+order.entityId.slice(0,8).toUpperCase(),exact:true}).click();
+  await expect(page.getByRole('dialog')).toContainText('Запись');
+  await expect(page.getByRole('dialog').getByRole('alert')).toHaveCount(0);
+  await page.getByRole('dialog').getByRole('button',{name:'Закрыть',exact:true}).click();
   await page.setViewportSize({width:390,height:844});
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
   await page.screenshot({path:'../test-results/generator-mobile.png',fullPage:true});

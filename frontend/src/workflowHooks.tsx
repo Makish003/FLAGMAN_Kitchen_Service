@@ -4,7 +4,7 @@ import {Button} from './components';
 let sharedStream:EventSource|undefined;
 const streamListeners=new Set<()=>void>();
 function subscribeChanges(listener:()=>void){streamListeners.add(listener);if(!sharedStream){sharedStream=new EventSource('/api/events');const emit=()=>streamListeners.forEach(fn=>fn());sharedStream.addEventListener('sync',emit);sharedStream.addEventListener('change',emit);}return()=>{streamListeners.delete(listener);if(!streamListeners.size){sharedStream?.close();sharedStream=undefined;}};}
-export const workflowStatus=(s:string)=>({submitted:'Ожидает решения',accepted:'Принята',partially_accepted:'Принята частично',rejected:'Отклонена',cancelled:'Отменена'}[s]??s);
+export const workflowStatus=(s:string)=>({submitted:'Ожидает решения',accepted:'Принята',partially_accepted:'Принята частично',rejected:'Отклонена',cancelled:'Отменена',ready:'Готов к выдаче',served:'Выдан'}[s]??s);
 export function useWorkflowResource<T>(path:string){
  const [data,setData]=useState<T>();const [error,setError]=useState('');const generation=useRef(0);
  const refresh=useCallback(async()=>{const version=++generation.current;try{const next=await api<T>(path);if(version===generation.current){setData(next);setError('');}}catch(e){if(version===generation.current)setError((e as Error).message);}},[path]);

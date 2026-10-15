@@ -5,10 +5,10 @@
 *::-webkit-scrollbar-thumb { background: var(--semantic-border-strong); border-radius: var(--radius-control); }
 *::-webkit-scrollbar-corner { background: var(--semantic-transparent); }
 body { margin: 0; font-family: var(--type-family); font-size: var(--type-body); line-height: 1.5; color: var(--semantic-text-primary); background: var(--semantic-surface-page); -webkit-font-smoothing: antialiased; }
-button,input { font: inherit; }
+button,input,textarea { font: inherit; }
 button { cursor: pointer; transition: background-color var(--motion-micro) var(--motion-easeStandard), color var(--motion-micro) var(--motion-easeStandard); }
 button:disabled { cursor: not-allowed; opacity: .5; }
-button:focus-visible,a:focus-visible,summary:focus-visible,input:focus-visible { outline: var(--size-focus) solid var(--semantic-focus); outline-offset: var(--space-1); }
+button:focus-visible,a:focus-visible,summary:focus-visible,input:focus-visible,textarea:focus-visible { outline: var(--size-focus) solid var(--semantic-focus); outline-offset: var(--space-1); }
 .button:active:not(:disabled) { transform: translateY(1px); }
 a { color: inherit; }
 h1,h2,h3,p { margin-top: 0; }
@@ -712,7 +712,24 @@ input { transition: border-color var(--motion-micro) var(--motion-easeStandard),
 .external-header .brand small { letter-spacing: 0; }
 .external-user { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-4); font-size: var(--type-small); color: var(--semantic-text-secondary); }
 .external-workspace main { width: 100%; }
-.external-workspace main > .dish-grid { margin-bottom: var(--space-5); }
+.waiter-layout { display: grid; grid-template-columns: minmax(0,1fr); align-items: start; gap: var(--space-5); margin-bottom: var(--space-5); }
+.waiter-menu { min-width: 0; }
+.waiter-layout > .waiter-cart { margin-bottom: 0; }
+.waiter-cart .workflow-line { grid-template-columns: minmax(0,1fr); }
+.waiter-cart-items { display: grid; align-content: start; gap: var(--space-4); min-height: 0; max-height: 50dvh; overflow-y: auto; overscroll-behavior-y: contain; scrollbar-gutter: stable; }
+.waiter-cart-items > .empty { padding: var(--space-5) 0; }
+.waiter-layout > .waiter-cart > .workflow-form { margin-bottom: 0; }
+.waiter-menu > .dish-grid { grid-template-columns: minmax(0,1fr); }
+@media (min-width: 40rem) {
+  .waiter-menu > .dish-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+}
+@media (min-width: 64rem) {
+  .waiter-layout { grid-template-columns: minmax(0,1fr) minmax(0,2fr); align-items: stretch; }
+  .waiter-layout > .waiter-cart { contain: size; min-height: 24rem; display: grid; grid-template-rows: auto auto minmax(0,1fr); }
+  .waiter-cart > .workflow-form { grid-template-columns: minmax(0,1fr); grid-template-rows: minmax(0,1fr) auto; min-height: 0; }
+  .waiter-cart-items { height: 100%; max-height: none; }
+  .waiter-menu > .dish-grid { min-height: 100%; }
+}
 .workflow-list { min-width: 0; padding: var(--space-5); }
 .workflow-list > .panel-title { padding: 0 0 var(--space-5); }
 .workflow-list > .workflow-form { margin-bottom: var(--space-5); }
@@ -739,6 +756,8 @@ input { transition: border-color var(--motion-micro) var(--motion-easeStandard),
 .workflow-checkbox { display: flex; align-items: center; gap: var(--space-2); min-height: var(--size-control); }
 .workflow-checkbox input[type='checkbox'] { flex: 0 0 18px; width: 18px; height: 18px; min-height: 0; margin: 0; padding: 0; accent-color: var(--semantic-action-primary); }
 .workflow-card { padding: var(--space-5) 0; border-top: 1px solid var(--semantic-border-default); overflow-wrap: anywhere; }
+.order-status-group { margin-top: var(--space-5); min-width: 0; }
+.order-status-group > h3 { margin: 0 0 var(--space-3); color: var(--semantic-text-secondary); }
 .workflow-card:last-child { padding-bottom: 0; }
 .workflow-card-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-4); }
 .workflow-card h3 { margin: 0 0 var(--space-3); }
@@ -769,3 +788,5 @@ input { transition: border-color var(--motion-micro) var(--motion-easeStandard),
   .workflow-form > .button { width: 100%; justify-self: stretch; }
   .workflow-card .badge { white-space: normal; }
 }
+
+.rejection-comment { display: block; width: 100%; min-width: 0; margin-top: var(--space-2); border: 1px solid var(--semantic-border-strong); border-radius: var(--radius-control); background: var(--semantic-surface-card); color: var(--semantic-text-primary); font-size: var(--type-input); padding: var(--space-3); resize: vertical; }

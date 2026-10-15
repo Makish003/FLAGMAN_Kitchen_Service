@@ -90,9 +90,16 @@ public static class Inventory
             foreach (var b in batches) s.Movements.Add(new(Id(), b.Id, b.ProductId, b.InitialQuantity, "receipt", null, now));
             s.Emit("delivery.created", now); return delivery;
         });
-    public static List<Batch> Usable(State s, string productId, DateTimeOffset now)
-        => s.Batches.Where(b => b.ProductId == productId && b.RemainingQuantity > 0 && b.ExpiresAt > now)
-            .OrderBy(b => b.ExpiresAt).ThenBy(b => b.ReceivedAt).ThenBy(b => b.Id, StringComparer.Ordinal).ToList();
+    public static Dictionary<string,decimal> Reserved(State s) => s.OrderRequests.Where(r=>r.Status=="submitted")
+        .SelectMany(r=>r.Reservations??[]).GroupBy(r=>r.BatchId).ToDictionary(g=>g.Key,g=>g.Sum(r=>r.Quantity));
+    public static List<Batch> FreeBatches(State s)
+    {
+        var reserved=Reserved(s);
+        return s.Batches.Select(b=>b with{RemainingQuantity=Math.Max(0,b.RemainingQuantity-reserved.GetValueOrDefault(b.Id))}).ToList();
+    }
+    public static List<Batch> Usable(State s,string productId,DateTimeOffset now)
+        => FreeBatches(s).Where(b=>b.ProductId==productId&&b.RemainingQuantity>0&&b.ExpiresAt>now)
+            .OrderBy(b=>b.ExpiresAt).ThenBy(b=>b.ReceivedAt).ThenBy(b=>b.Id,StringComparer.Ordinal).ToList();
     public static decimal Available(State s, string productId, DateTimeOffset now) => Usable(s, productId, now).Sum(x => x.RemainingQuantity);
     public static int Portions(State s, Dish dish, DateTimeOffset now)
         => dish.Ingredients.Count == 0 ? 0 : (int)Math.Min(1_000_000, dish.Ingredients.Min(x => decimal.Floor(Available(s, x.ProductId, now) / x.Quantity)));
@@ -130,7 +137,8 @@ public static class Inventory
         foreach (var batch in Usable(s, productId, now))
         {
             var used = Math.Min(amount, batch.RemainingQuantity); amount -= used;
-            s.Batches[s.Batches.FindIndex(x => x.Id == batch.Id)] = batch with { RemainingQuantity = batch.RemainingQuantity - used };
+            var index=s.Batches.FindIndex(x=>x.Id==batch.Id);
+            s.Batches[index]=s.Batches[index] with{RemainingQuantity=s.Batches[index].RemainingQuantity-used};
             if (orderId is not null && used > 0) s.Movements.Add(new(Id(), batch.Id, productId, -used, "order", orderId, now));
             if (amount == 0) break;
         }

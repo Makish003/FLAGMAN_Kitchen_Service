@@ -15,8 +15,10 @@ catch (Exception error)
 
 static void Run(string[] args)
 {
+if (args.Contains("--kitchen-rejections")) { Console.WriteLine($"Rejection checks: {KitchenRejectionChecks.Run()}"); return; }
 if (args.Length==3&&args[0]=="--migration-copy") { MigrationCopyChecks.Run(args[1],args[2]); return; }
-if (args.Contains("--workflows")) { Console.WriteLine($"Workflow checks: {WorkflowChecks.Run()+AccessChecks.Run()+WorkflowBoundaryChecks.Run()}"); return; }
+if (args.Contains("--reservations")) { Console.WriteLine($"Reservation checks: {ReservationChecks.Run()}"); return; }
+if (args.Contains("--workflows")) { Console.WriteLine($"Workflow checks: {KitchenRejectionChecks.Run()+ReservationChecks.Run()+KitchenChecks.Run()+WorkflowChecks.Run()+AccessChecks.Run()+WorkflowBoundaryChecks.Run()}"); return; }
 var now = DateTimeOffset.Parse("2026-10-10T09:00:00Z");
 if (args.Length > 0 && args[0] == "--compete")
 {
@@ -323,8 +325,8 @@ Test("Generator resumes persisted seed and commits visible entities with durable
     var generator=new Generator(store);generator.Start(new(42,1));generator.Tick();generator.Stop();
     var state=store.Read(s=>s);Assert(state.DeliveryRequests.Count==1 && state.OrderRequests.Count==1,"Restart must create next order instead of replaying delivery");
     var log=JsonSerializer.SerializeToElement(store.History("generatorEvents",1,20,null,null),Store.Json);
-    var entry=log.GetProperty("items")[0];Assert(entry.GetProperty("step").GetInt32()==1 && entry.GetProperty("status").GetString()=="submitted");
-    Assert(entry.GetProperty("entityId").GetString()==state.OrderRequests[0].Id && entry.GetProperty("summary").GetString()!.Contains("Ожидает"));
+    var entry=log.GetProperty("items")[0];Assert(entry.GetProperty("step").GetInt32()==1 && entry.GetProperty("status").GetString()=="rejected");
+    Assert(entry.GetProperty("entityId").GetString()==state.OrderRequests[0].Id && entry.GetProperty("summary").GetString()!.Contains("Недостаточно"));
     generator=new Generator(new Store(Path.Combine(testDir,"generator.db")));generator.Start(new(42,1));generator.Tick();generator.Stop();
     Assert(store.Read(s=>s.OrderRequests.Count)==2,"New generator instance must continue persisted progress");
     generator.Start(new(42,1));generator.Tick();generator.Stop();
@@ -490,6 +492,6 @@ try {
     });
     testSucceeded=true;
 } finally { Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();if(testSucceeded)Directory.Delete(testDir,true);else Console.WriteLine("Failed domain databases retained: "+testDir); }
-passed+=WorkflowChecks.Run()+AccessChecks.Run()+WorkflowBoundaryChecks.Run();
+passed+=KitchenRejectionChecks.Run()+ReservationChecks.Run()+KitchenChecks.Run()+WorkflowChecks.Run()+AccessChecks.Run()+WorkflowBoundaryChecks.Run();
 Console.WriteLine($"{passed} critical domain / real database checks passed.");
 }

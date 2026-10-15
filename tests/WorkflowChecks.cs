@@ -27,8 +27,8 @@ public static class WorkflowChecks
         var replay=new Store(path).Write(s=>WorkflowService.RespondProcurement(s,request.Id,response,supplier,"response",now));Check(replay.DeliveryRequestId==result.DeliveryRequestId,"Response retry restart");
         var order=store.Write(s=>WorkflowService.SubmitOrder(s,new([new("dish",1)]),new("waiter","waiter"),"submit",now));var count=store.Read(s=>s.Movements.Count);
         Check(store.Read(s=>s.Orders.Count)==0,"Pending does not consume");
-        var decided=store.Write(s=>WorkflowService.DecideOrder(s,order.Id,new(1,"accept"),a,"decision",now));Check(decided.Status=="accepted"&&store.Read(s=>s.Movements.Count)>count,"Accept consumes");
-        new Store(path).Write(s=>WorkflowService.DecideOrder(s,order.Id,new(1,"accept"),a,"decision",now));store.VerifyIntegrity();
+        var decided=store.Write(s=>WorkflowService.DecideOrder(s,order.Id,new(1,"accept"),new("cook","cook"),"decision",now));Check(decided.Status=="ready"&&store.Read(s=>s.Movements.Count)>count,"Accept consumes");
+        new Store(path).Write(s=>WorkflowService.DecideOrder(s,order.Id,new(1,"accept"),new("cook","cook"),"decision",now));store.VerifyIntegrity();
         Console.WriteLine("PASS Procurement_10kg_5l_response_8kg_0_accept_7kg_restart");Console.WriteLine("PASS Pending_order_does_not_consume_accept_once");var expired=store.Read(s=>s.Batches.First());var at=expired.ExpiresAt;store.Write(s=>Inventory.Expire(s,at));Check(store.Read(s=>s.Batches.First().RemainingQuantity)==expired.RemainingQuantity,"Expiry keeps physical stock");
         var written=store.Write(s=>Inventory.WriteOffExpired(s,expired.Id,a,"writeoff",at));Check(store.Read(s=>Inventory.BatchStatus(s,s.Batches.First(),at))=="written_off","Write off status");
         Check(new Store(path).Write(s=>Inventory.WriteOffExpired(s,expired.Id,a,"writeoff",at)).MovementId==written.MovementId,"Writeoff retry");

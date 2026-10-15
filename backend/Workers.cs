@@ -25,8 +25,8 @@ public sealed class Generator(Store store)
                     var now = s.Now(DateTimeOffset.UtcNow);
                     var result = Demo.Generate(s, seed, nextIndex, now);
                     var entry = result switch {
-                        DeliveryRequest d => new GeneratorEvent(Inventory.Id(),now,seed,nextIndex,"delivery",d.Id,"submitted","Ожидает приёмки: "+d.Number),
-                        OrderRequest o => new GeneratorEvent(Inventory.Id(),now,seed,nextIndex,"order",o.Id,"submitted","Ожидает решения менеджера"),
+                        DeliveryRequest d => new GeneratorEvent(Inventory.Id(),now,seed,nextIndex,"delivery",d.Id,"submitted","Ожидает приёмки: "+d.Number,RequestDocument:true),
+                        OrderRequest o => new GeneratorEvent(Inventory.Id(),now,seed,nextIndex,"order",o.Id,o.Status,o.Status=="submitted"?"Ожидает приготовления; продукты зарезервированы":o.Reason??"Недостаточно свободных продуктов",RequestDocument:true),
                         Delivery d => new GeneratorEvent(Inventory.Id(), now, seed, nextIndex, "delivery", d.Id, "accepted", $"Поставка {d.Number}: " + string.Join(", ", s.Batches.Where(b => d.BatchIds.Contains(b.Id)).Select(b => $"{s.Products.Find(p => p.Id == b.ProductId)!.Name} — {b.InitialQuantity} {s.Products.Find(p => p.Id == b.ProductId)!.Unit}"))),
                         Order o => new GeneratorEvent(Inventory.Id(), now, seed, nextIndex, "order", o.Id, o.Status, string.Join(", ", o.Items.Select(i => $"{s.Dishes.Find(d => d.Id == i.DishId)!.Name} — {i.Portions} порц.")) + (o.Status == "accepted" ? "; ингредиенты списаны по FEFO" : "; не хватает: " + string.Join(", ", o.Shortages.Select(x => $"{x.ProductName} — {x.Missing} {x.Unit}")))),
                         _ => new GeneratorEvent(Inventory.Id(), now, seed, nextIndex, nextIndex % 3 == 0 ? "delivery" : "order", null, "replayed", "Ранее обработанное событие; повторного изменения склада нет")

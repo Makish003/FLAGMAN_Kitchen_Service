@@ -2,6 +2,8 @@
 
 Базовый путь `/api`, JSON camelCase. Актуальный контракт после перехода на заявки. Прежние `/orders` и `/deliveries` больше не проводят складские операции напрямую.
 
+Полный журнал `GET /history/orders` доступен только manager. Параметр `status=all|accepted|rejected` фильтрует записи и total до пагинации; `sort=newest|oldest`, по умолчанию новые первыми. Кабинет менеджера отдельно показывает состояния заявок и складской журнал завершённых/отклонённых попыток списания.
+
 ## Авторизация
 
 `POST /login {"login":"manager","password":"..."}` устанавливает HttpOnly cookie. Первый manager создаётся один раз из `FLAGMAN_PASSWORD` (минимум 10 символов). После bootstrap переменная не требуется для запуска и вход только по общему паролю запрещён. `/session` возвращает `{id,name,role,timezone,demo}`. Регистр символов в имени маршрута и схеме Bearer не отменяет проверки роли. Лимит входа: 10/IP/минуту, `429` и Retry-After. Анонимный защищённый запрос: `401`.
@@ -12,7 +14,7 @@ Cookie-команды требуют `X-Requested-With: Flagman`, проверя
 
 Создание/ответ/решение/списание требуют `Idempotency-Key` (1–100 символов). Область: стабильный actorId + операция. Повтор того же тела возвращает первоначальный документ; другое тело с тем же ключом даёт `409`. Решения требуют `expectedVersion`; retry восстанавливается до проверки версии. Все изменения документа, партии, движения, audit, события и результата фиксируются в одной SQLite BEGIN IMMEDIATE.
 
-Recovery: `GET /operations/{scope}/{key}`. Scope: `procurement`, `procurement-response`, `procurement-cancel`, `delivery`, `delivery-acceptance`, `order`, `order-decision`, `write-off`. Другой аккаунт не видит результат (`404` при допустимой роли). После timeout сначала recovery, затем исходный запрос с прежним key. Legacy scopes теперь возвращают DeliveryRequest/OrderRequest, а не складские Delivery/Order.
+Recovery: `GET /operations/{scope}/{key}`. Scope: `procurement`, `procurement-response`, `procurement-cancel`, `delivery`, `delivery-acceptance`, `order`, `order-decision`, `order-serve`, `write-off`. Другой аккаунт не видит результат (`404` при допустимой роли). После timeout сначала recovery, затем исходный запрос с прежним key. Legacy scopes теперь возвращают DeliveryRequest/OrderRequest, а не складские Delivery/Order.
 
 ## Закупка 10 → 8 → 7 кг
 
@@ -42,7 +44,7 @@ Recovery: `GET /operations/{scope}/{key}`. Scope: `procurement`, `procurement-re
 
 ## Заказы, предложения, списание
 
-Официант/manager отправляет `POST /order-requests` или `/orders {items:[{dishId,portions}]}`: 201 submitted без расхода/резерва. Стоп-лист, архив и неверные порции запрещены. Manager вызывает `/order-requests/{id}/decision {expectedVersion,decision:"accept"|"reject",reason?}`. Рецепт изменился/архивирован: 409, заявка остаётся pending. Подтверждение повторно проверяет FEFO/сроки; shortage окончательно отклоняет без частичного расхода. Ручной отказ требует причины и не создаёт ложный дефицит. Pending не входит в продажи/спрос/потери.
+Официант/manager отправляет `POST /order-requests` или `/orders {items:[{dishId,portions}]}`: 201 submitted: продукты атомарно резервируются по партиям FEFO, физического расхода пока нет. Общие ингредиенты всех строк проверяются вместе; нехватка свободного остатка даёт 409 без частичного резерва. Резерв исключается из доступных порций, предложений и планирования, сохраняется после перезапуска и освобождается при отказе. Snapshot продукта содержит physical, usable (свободный пригодный остаток), reserved. Стоп-лист, архив и неверные порции запрещены. Повар (cook) вызывает `POST /order-requests/{id}/decision {expectedVersion,decision:"accept"|"reject",reasonCode?,productIds?,reason?}`. Рецепт изменился/архивирован: 409, заявка остаётся pending. Подтверждение переводит заявку в `ready`, фиксирует DecisionActorId/DecidedAt и повторно проверяет FEFO/сроки; shortage окончательно отклоняет без частичного расхода. Ручной отказ требует reasonCode: expired_product (просроченный продукт), product_shortage (нехватка), spoiled_product (испорчен), equipment_failure (оборудование), other (другое). Для первых трёх обязателен непустой productIds без повторов: только продукты состава заказа. Для equipment_failure/other обязателен непустой reason до 500 символов, productIds не передаётся. Неизвестная категория, чужой продукт и незаполненные поля дают 400, сохраняя заказ и резерв. Отказ сохраняет структурированный rejection {code,products:[{id,name}],comment} и читаемый reason для всех участников; названия продуктов сохраняются в истории. Поле rejectionProducts [{id,name}] в представлении заказа доступно повару для выбора, без количеств рецептуры. Отказ не создаёт ложный дефицит. Pending не входит в продажи/спрос/потери. `POST /order-requests/{id}/serve {expectedVersion}` доступен только автору заказа (waiter или manager), только из ready: статус `served`, ServedById/ServedAt, версия +1, без складских движений. Повтор с прежним ключом возвращает прежний результат; другой ключ или устаревшая версия даёт 409. Старые accepted остаются историей и не превращаются в ready. При запуске старые submitted без поля Reservations получают резерв имеющихся продуктов, начиная с самых ранних. Ранее допущенный дефицит не создаёт фиктивный запас: при готовности повар получит отказ по нехватке, если склад так и не пополнен.
 
 `PUT /dishes/{id}/offer {visibility:"auto"|"show"|"hide",emphasized,waiterNote,expectedVersion}`: первая версия ожидает 0. Пояснение <=240 символов. Акцент независим от доступности; архив не публикуется. `/waiter/offers` не содержит рецептов/цен.
 
@@ -50,7 +52,7 @@ Recovery: `GET /operations/{scope}/{key}`. Scope: `procurement`, `procurement-re
 
 ## Полная карта доступа
 
-Все защищённые маршруты допускают cookie и bearer. Фильтр владельца выполняется до count/page. Manager видит все документы. Supplier/waiter не получают manager snapshot или складскую историю.
+Все защищённые маршруты допускают cookie и bearer. Фильтр владельца выполняется до count/page. Manager видит все документы. Supplier/waiter/cook не получают manager snapshot или складскую историю.
 
 | Метод/маршрут | Роль | Ownership/проекция |
 |---|---|---|
@@ -68,8 +70,9 @@ Recovery: `GET /operations/{scope}/{key}`. Scope: `procurement`, `procurement-re
 | GET delivery-requests; GET supplier/delivery-requests; GET delivery-requests/{id} | manager/supplier | Supplier только authorId=actorId |
 | POST delivery-requests/{id}/acceptance | manager | Актуальный документ внутри транзакции |
 | POST order-requests, orders | manager/waiter | AuthorId=actorId; создаётся pending |
-| GET order-requests; GET waiter/order-requests; GET order-requests/{id} | manager/waiter | Waiter только authorId=actorId, без shortages/рецептов |
-| POST order-requests/{id}/decision | manager | Полное решение, актуальная рецептура/FEFO |
+| GET order-requests; GET waiter/order-requests; GET cook/order-requests; GET order-requests/{id} | manager/waiter/cook | Waiter только authorId=actorId; списки cook содержат только заказы за сегодня по часовому поясу ресторана и демо-времени, независимо от адреса списка. Состав с названиями и автором, без рецептов/цен. Фильтр status: all/submitted/ready/served/rejected/accepted/cancelled; применяется до пагинации. Сначала submitted, ready (старые первыми), затем served, rejected, accepted, cancelled (новые первыми внутри статуса). Детали доступны по ID |
+| POST order-requests/{id}/decision | cook | Готовность/отказ, актуальная рецептура/FEFO |
+| POST order-requests/{id}/serve | waiter/manager | Только собственный ready-заказ, без повторного расхода |
 | GET supplier/catalog | manager/supplier | Активные ID/name/unit |
 | GET waiter/menu, waiter/offers | manager/waiter | Названия/категория/порции без цен и рецептов |
 | PUT dishes/{id}/offer; GET offers/overrides | manager | Управление публикацией |

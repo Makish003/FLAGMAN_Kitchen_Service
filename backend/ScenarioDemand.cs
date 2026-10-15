@@ -70,7 +70,7 @@ public static class ScenarioDemand
         Capture(now,now);
         for(var at=now;at<end;){
             foreach(var supply in supplies.Where(x=>x.Arrival<=at).ToArray()){s.Batches.Add(new("future-"+s.Batches.Count,"scenario",supply.ProductId,supply.Quantity,supply.Quantity,supply.Arrival,supply.ExpiresAt,null,null,"scenario"));supplies.Remove(supply);}
-            if(at==arrival){arrivalBatches=s.Batches.ToList();foreach(var p in s.Products)atArrival[p.Id]=Inventory.Available(s,p.Id,at);}
+            if(at==arrival){arrivalBatches=Inventory.FreeBatches(s);foreach(var p in s.Products)atArrival[p.Id]=Inventory.Available(s,p.Id,at);}
             var next=at.AddMinutes(15);if(next>end)next=end;if(at<arrival&&next>arrival)next=arrival;if(at<finish&&next>finish)next=finish;if(at<forecastEnd&&next>forecastEnd)next=forecastEnd;
             // Split at local hour changes, expiration and explicit supply events.
             var zone=TimeZoneInfo.FindSystemTimeZoneById(s.Settings.Timezone);var local=TimeZoneInfo.ConvertTime(at,zone);var toHour=at.AddMinutes(60-local.Minute).AddSeconds(-local.Second).AddTicks(-(local.Ticks%TimeSpan.TicksPerSecond));if(toHour>at&&toHour<next)next=toHour;
