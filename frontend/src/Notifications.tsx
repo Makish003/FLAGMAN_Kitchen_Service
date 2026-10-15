@@ -4,7 +4,7 @@ import {Button} from './components';
 import type {Snapshot} from './types';
 import {usePresence} from './motion/usePresence';
 
-const noticeSections = {stop:'Стоп-лист',expiry:'Сроки годности',stock:'Склад и партии',menu:'Меню и рецептуры',deliveries:'Поставки'};
+const noticeSections = {stop:'Стоп-лист',expiry:'Сроки годности',stock:'Склад и партии',menu:'Меню и рецептуры',deliveries:'Поставки',orders:'Заказы','procurement-requests':'Заявки поставщикам'};
 type Notice = {id:string;title:string;description:string;page:keyof typeof noticeSections;count:number;icon:typeof Bell};
 const plural = (count:number,forms:[string,string,string]) => forms[count%100>=11&&count%100<=14?2:count%10===1?0:count%10>=2&&count%10<=4?1:2];
 function noticesFor(s:Snapshot):Notice[] {
@@ -12,13 +12,15 @@ function noticesFor(s:Snapshot):Notice[] {
   const dishes=s.dishes.filter(d=>!d.archived);
   const stopped=dishes.filter(d=>d.portions===0).length;
   if(stopped)notices.push({id:'stop',title:`${stopped} ${plural(stopped,['блюдо','блюда','блюд'])} в стоп-листе!`,description:'Посмотрите, каких ингредиентов не хватает.',page:'stop',count:stopped,icon:CircleAlert});
+  const expired=s.totals.expiredBatches??0;
+  if(expired)notices.push({id:'expired',title:`${expired} партий просрочены`,description:'Проверьте физический остаток и спишите товар вручную.',page:'stock',count:expired,icon:Clock3});
   const warning=s.totals.warningBatches;
   if(warning)notices.push({id:'expiry',title:`${warning} ${plural(warning,['партия скоро истечёт','партии скоро истекут','партий скоро истекут'])}!`,description:'Проверьте сроки годности и используйте продукты вовремя.',page:'expiry',count:warning,icon:Clock3});
   if(!s.products.length||!dishes.length||!s.totals.deliveries)notices.push({id:'setup',title:'Вы не закончили настройку склада!',description:!s.products.length?'Добавьте продукты для учёта остатков.':!dishes.length?'Добавьте блюда и их рецептуры.':'Примите первую поставку продуктов.',page:!s.products.length?'stock':!dishes.length?'menu':'deliveries',count:1,icon:Boxes});
   return notices;
 }
 
-function PushNotice({notice,onOpen,onClose}:{notice:Notice;onOpen:()=>void;onClose:()=>void}) {
+export function PushNotice({notice,onOpen,onClose}:{notice:Notice;onOpen:()=>void;onClose:()=>void}) {
   const [visible,setVisible]=useState(true);
   const ref=useRef<HTMLElement>(null);
   const motion=usePresence(visible,ref,onClose);

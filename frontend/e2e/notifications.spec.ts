@@ -11,7 +11,7 @@ async function fixture(page:Page,data:Snapshot) {
   await page.route('**/api/**',route=>{
     const pathname=new URL(route.request().url()).pathname;
     if(pathname==='/api/events')return route.fulfill({contentType:'text/event-stream',body:': connected\n\n'});
-    return route.fulfill({json:pathname==='/api/session'?{name:'Управляющий',demo:false}:pathname.startsWith('/api/history/')?{items:[],total:0,page:1,size:20}:data});
+    return route.fulfill({json:['/api/delivery-requests','/api/order-requests','/api/procurement-requests'].includes(pathname)?{items:[],total:0,page:1,size:50}:['/api/accounts','/api/offers/overrides'].includes(pathname)?[]:pathname==='/api/session'?{id:'mock-manager',role:'manager',name:'Управляющий',demo:false}:pathname.startsWith('/api/history/')?{items:[],total:0,page:1,size:20}:data});
   });
   await page.goto('/stock');
   await expect(page.getByRole('heading',{name:'Склад и партии',exact:true})).toBeVisible();
@@ -95,7 +95,7 @@ for(const reducedMotion of ['no-preference','reduce'] as const) {
   test(`idle push dismissal respects ${reducedMotion}`,async({page})=>{
     await page.emulateMedia({reducedMotion});
     const data=state();await fixture(page,data);
-    await page.clock.pauseAt(await page.evaluate(()=>Date.now()));
+    await page.clock.pauseAt(await page.evaluate(()=>Date.now()+1000));
     data.dishes[0].portions=0;data.revision++;
     await page.clock.fastForward(30000);
     const push=page.locator('.notification-push');

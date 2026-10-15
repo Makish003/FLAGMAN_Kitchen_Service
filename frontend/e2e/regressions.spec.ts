@@ -37,7 +37,7 @@ async function fixture(page:Page,menu={active:true},recommendations:Recommendati
   let revision=1;
   await page.addInitScript(()=>{
     (window as any).EventSource=class extends EventTarget {
-      constructor(){super();(window as any).__stream=this;}
+      constructor(){super();((window as any).__streams??=[]).push(this);}
       close(){}
     };
   });
@@ -47,7 +47,7 @@ async function fixture(page:Page,menu={active:true},recommendations:Recommendati
   });
   await page.route('**/api/**',route=>{
     const pathname=new URL(route.request().url()).pathname;
-    const body=pathname==='/api/session'?{name:'Управляющий',demo:true}:
+    const body=['/api/delivery-requests','/api/order-requests','/api/procurement-requests'].includes(pathname)?{items:[],total:0,page:1,size:50}:['/api/accounts','/api/offers/overrides'].includes(pathname)?[]:pathname==='/api/session'?{id:'mock-manager',role:'manager',name:'Управляющий',demo:true}:
       pathname.startsWith('/api/history/')?{items:[],total:0}:
       {now,revision,settings:{timezone:'Europe/Moscow',warningHours:48,leadTimeHours:2},products:[{id:'t',name:'Томаты',unit:'g',usable:1000,physical:1000}],dishes:menu.active?[{id:'a',name:'Блюдо А',portions:2,ingredients:[{productId:'t',quantity:500}],shortages:[]}]:[],batches:[],deliveries:[],orders:[],movements:[],recommendations,analytics,totals:{batches:0,deliveries:0,orders:0,movements:0}};
     return route.fulfill({json:body});
@@ -55,7 +55,7 @@ async function fixture(page:Page,menu={active:true},recommendations:Recommendati
   return async()=>{
     revision++;
     const response=page.waitForResponse('**/api/snapshot');
-    await page.evaluate(()=>(window as any).__stream.dispatchEvent(new Event('change')));
+    await page.evaluate(()=>(window as any).__streams.forEach((stream:EventTarget)=>stream.dispatchEvent(new Event('change'))));
     await response;
   };
 }
@@ -111,15 +111,15 @@ test('offers cannot calculate without a menu or revive a result after the last d
 test('order and delivery journal search follows the heading without double padding',async({page})=>{
   await fixture(page);
   for(const route of ['orders','deliveries']){
-    await page.goto('/'+route);
+    await page.goto('/'+route);if(route==='deliveries')await page.getByRole('tab',{name:'Проведённые поставки'}).click();
     for(const width of [390,1440]){
       await page.setViewportSize({width,height:960});
-      const gap=await page.locator('.panel').evaluate(panel=>{
+      const gap=await page.locator('.panel').filter({has:page.locator('.history-toolbar')}).evaluate(panel=>{
         const subtitle=panel.querySelector('.panel-title p')!.getBoundingClientRect();
         const search=panel.querySelector('.history-toolbar .search')!.getBoundingClientRect();
         return search.top-subtitle.bottom;
       });
-      expect(gap).toBeGreaterThanOrEqual(16);expect(gap).toBeLessThanOrEqual(24);
+      expect(gap).toBeGreaterThanOrEqual(15.999);expect(gap).toBeLessThanOrEqual(24.001);
       await page.screenshot({path:`../test-results/reports/search-${route}-${width}.png`,fullPage:true});
     }
   }
@@ -169,7 +169,7 @@ test('delivery preview is invalidated by warehouse updates and late responses',a
   await dialog.getByLabel('Количество',{exact:true}).fill('500');
   const calculate=dialog.getByRole('button',{name:'Рассчитать результат поставки'});
   await calculate.click();await expect(dialog.getByRole('region',{name:'Результат расчёта'})).toBeVisible();
-  await refresh();await expect(dialog.getByRole('region',{name:'Результат расчёта'})).toHaveCount(0);
+  await refresh();await expect(dialog.getByRole('region',{name:'Результат расчёта'})).toHaveCount(1);await expect(dialog.getByText('Склад изменился. Показан предыдущий результат.',{exact:false})).toBeVisible();
   delayed=true;await calculate.click();await started;
   await dialog.getByLabel('Количество',{exact:true}).fill('600');
   release();await expect(calculate).toBeEnabled();

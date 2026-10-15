@@ -19,7 +19,7 @@ test.beforeEach(async({page})=>{
   await page.route('**/api/**',route=>{
     const pathname=new URL(route.request().url()).pathname;
     const rows=pathname.endsWith('/orders')?orders:pathname.endsWith('/deliveries')?[delivery]:[batch];
-    return route.fulfill({json:pathname==='/api/session'?{name:'Управляющий',demo:true}:pathname.startsWith('/api/history/')?{items:rows,total:rows.length}:{now,revision:1,settings:{timezone:'Europe/Moscow',warningHours:48},products:[product],dishes:[{id:'salad',name:'Салат',ingredients:[],shortages:[],portions:1}],batches:[batch],expiringBatches:[],deliveries:[delivery],orders,movements:[],recommendations:[],totals:{batches:1,orders:3,deliveries:1,movements:0}}});
+    return route.fulfill({json:['/api/delivery-requests','/api/order-requests','/api/procurement-requests'].includes(pathname)?{items:[],total:0,page:1,size:50}:['/api/accounts','/api/offers/overrides'].includes(pathname)?[]:pathname==='/api/session'?{id:'mock-manager',role:'manager',name:'Управляющий',demo:true}:pathname.startsWith('/api/history/')?{items:rows,total:rows.length}:{now,revision:1,settings:{timezone:'Europe/Moscow',warningHours:48},products:[product],dishes:[{id:'salad',name:'Салат',ingredients:[],shortages:[],portions:1}],batches:[batch],expiringBatches:[],deliveries:[delivery],orders,movements:[],recommendations:[],totals:{batches:1,orders:3,deliveries:1,movements:0}}});
   });
 });
 
@@ -45,7 +45,7 @@ test('operational rows emphasize data and remain contained on mobile',async({pag
   for(const width of [1440,390]){
     await page.setViewportSize({width,height:960});
     for(const route of ['stock','orders','deliveries']){
-      await page.goto('/'+route);
+      await page.goto('/'+route);if(route==='deliveries')await page.getByRole('tab',{name:'Проведённые поставки'}).click();
       const row=page.locator('tbody tr').first();
       await expect(row).toBeVisible();
       const targets=route==='stock'?[row.locator('td').nth(4).locator('strong'),row.locator('.badge')]:[row.locator('td').nth(2)];

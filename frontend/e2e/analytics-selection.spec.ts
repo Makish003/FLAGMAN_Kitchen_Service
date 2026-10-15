@@ -15,7 +15,9 @@ async function fixture(page:Page,screen='analytics'){
   await page.route('**/api/**',async route=>{
     const url=new URL(route.request().url());
     if(url.pathname==='/api/events')return route.fulfill({contentType:'text/event-stream',body:': connected\n\n'});
-    if(url.pathname==='/api/session')return route.fulfill({json:{name:'Управляющий',demo:false}});
+    if(['/api/delivery-requests','/api/order-requests','/api/procurement-requests'].includes(url.pathname))return route.fulfill({json:{items:[],total:0,page:1,size:50}});
+    if(['/api/accounts','/api/offers/overrides'].includes(url.pathname))return route.fulfill({json:[]});
+    if(url.pathname==='/api/session')return route.fulfill({json:{id:'mock-manager',role:'manager',name:'Управляющий',demo:false}});
     if(url.pathname==='/api/analytics'){
       const selected=url.searchParams.get('days');
       return route.fulfill({json:report(selected===null?daily:daily.filter(d=>selected.split(',').includes(d.day)))});

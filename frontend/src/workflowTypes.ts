@@ -1,0 +1,13 @@
+export type Role = 'manager'|'supplier'|'waiter';
+export type Account = {id:string;login:string;name:string;role:Role;active:boolean;sessionVersion:number};
+export type PageResult<T> = {items:T[];total:number;page:number;size:number};
+export type ProductOption = {id:string;name:string;unit:string};
+export type ProcurementLine = {id:string;productId:string;quantity:number;unit:string};
+export type ProcurementResponseLine = {lineId:string;confirmedQuantity:number;expiresAt?:string;reason?:string};
+export type ProcurementRequest = {id:string;authorId:string;supplierId:string;items:ProcurementLine[];createdAt:string;status:string;version:number;comment?:string;response?:ProcurementResponseLine[];deliveryRequestId?:string};
+export type DeliveryRequestLine = ProcurementLine & {expiresAt:string;procurementLineId?:string};
+export type AcceptanceLine = {lineId:string;acceptedQuantity:number;verifiedExpiresAt?:string;reason?:string};
+export type DeliveryRequest = {id:string;authorId:string;number:string;items:DeliveryRequestLine[];status:string;version:number;acceptance?:AcceptanceLine[];deliveryId?:string;procurementRequestId?:string};
+export type OrderRequest = {id:string;authorId?:string;items:{dishId:string;portions:number}[];status:string;version:number;reason?:string;shortages?:{productName:string;missing:number;unit:string}[];orderId?:string};
+export type MenuItem = {id:string;name:string;category:string;availablePortions:number};
+export type PublishedOffer = {dishId:string;name:string;category:string;availablePortions:number;emphasized:boolean;waiterNote?:string;visibility:string;unavailableReason?:string};

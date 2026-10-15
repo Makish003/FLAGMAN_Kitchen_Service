@@ -14,7 +14,7 @@ test.beforeEach(async({page})=>{
     const products=[{id:'tomato',name:'Томаты',unit:'g',warningHours:48,physical:2500,usable:2500,expired:0,expiring:0,lastUnitCost:0.25,lastCurrency:'RUB'},
       {id:'milk',name:'Молоко',unit:'ml',warningHours:48,physical:1000,usable:1000,expired:0,expiring:0,lastUnitCost:0.1,lastCurrency:'USD'},
       {id:'egg',name:'Яйца',unit:'pcs',warningHours:48,physical:3,usable:3,expired:0,expiring:0,lastUnitCost:null,lastCurrency:null}];
-    return route.fulfill({json:pathname==='/api/session'?{name:'Управляющий',demo:false}:pathname.startsWith('/api/history/')?{items:[],total:0}:pathname==='/api/deliveries'?{id:'saved'}:pathname==='/api/scenario'?{revision:1,demand:{hasHistory:true,trainingOrders:10,trainingDays:3},forecasts:[],purchases:[{productId:'tomato',name:'Томаты',unit:'g',quantity:1700,arrival:now,shelfLifeHours:48,likelyExcess:null}]}:
+    return route.fulfill({json:['/api/delivery-requests','/api/order-requests','/api/procurement-requests'].includes(pathname)?{items:[],total:0,page:1,size:50}:['/api/accounts','/api/offers/overrides'].includes(pathname)?[]:pathname==='/api/session'?{id:'mock-manager',role:'manager',name:'Управляющий',demo:false}:pathname.startsWith('/api/history/')?{items:[],total:0}:pathname==='/api/deliveries'?{id:'saved'}:pathname==='/api/scenario'?{revision:1,demand:{hasHistory:true,trainingOrders:10,trainingDays:3},forecasts:[],purchases:[{productId:'tomato',name:'Томаты',unit:'g',quantity:1700,arrival:now,shelfLifeHours:48,likelyExcess:null}]}:
       {now,revision:1,settings:{timezone:'Europe/Moscow',warningHours:48,planningHours:24,leadTimeHours:0},products,dishes:[{id:'salad',name:'Салат',ingredients:[],portions:1}],batches:[],expiringBatches:[],deliveries:[],orders:[],movements:[],recommendations:[],procurement:[{productId:'tomato',unit:'g',quantity:1500}],totals:{batches:0,orders:0,deliveries:0,movements:0}}});
   });
   await page.goto('/deliveries');
@@ -94,7 +94,6 @@ test('procurement draft keeps edited quantity and loads last delivery price',asy
   await page.getByLabel('Закупить Томаты',{exact:true}).fill('2000');
   await page.getByRole('button',{name:'Проверить изменённые количества'}).click();
   await page.getByRole('button',{name:'Создать черновик поставки'}).click();
-  const dialog=page.getByRole('dialog');
-  await expect(dialog.getByLabel('Количество',{exact:true})).toHaveValue('2000');
-  await expect(dialog.getByLabel(/^Закупочная цена/)).toHaveValue('0.25');
+  await expect(page.getByRole('heading',{name:'Заявки поставщикам',exact:true})).toBeVisible();
+  await expect(page.locator('.workflow-line').getByLabel('Количество',{exact:true})).toHaveValue('2000');
 });

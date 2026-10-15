@@ -174,23 +174,23 @@ public static class Insights
             }).Where(d => d.rejectedOrders > 0).OrderByDescending(d => d.rejectedOrders).ThenBy(d => d.Name),
             wasteProducts = s.Products.SelectMany(p => new[] { "RUB", "USD", "EUR" }.Select(currency => new {
                 p.Id, p.Name, p.Unit, currency,
-                cost = -movements.Where(m => m.ProductId == p.Id && m.Kind == "expiry").Sum(m => m.Quantity * (prices.TryGetValue(m.BatchId, out var b) && b.Currency == currency ? b.UnitCost ?? 0 : 0))
+                cost = -movements.Where(m => m.ProductId == p.Id && m.Kind is "expiry" or "write_off").Sum(m => m.Quantity * (prices.TryGetValue(m.BatchId, out var b) && b.Currency == currency ? b.UnitCost ?? 0 : 0))
             })).Where(p => p.cost > 0).OrderByDescending(p => p.cost),
             products = s.Products.Select(p => new { p.Id, p.Name, p.Unit,
                 consumed = -movements.Where(m => m.ProductId == p.Id && m.Kind == "order").Sum(m => m.Quantity),
-                wasted = -movements.Where(m => m.ProductId == p.Id && m.Kind == "expiry").Sum(m => m.Quantity),
+                wasted = -movements.Where(m => m.ProductId == p.Id && m.Kind is "expiry" or "write_off").Sum(m => m.Quantity),
                 shortageCount = shortages.Count(x => x.Detail.ProductId == p.Id),
                 shortageQuantity = shortages.Where(x => x.Detail.ProductId == p.Id).Sum(x => x.Detail.Missing),
                 affectedDishes = shortages.Where(x => x.Detail.ProductId == p.Id).SelectMany(x => x.Detail.DishIds).Distinct().ToList() }),
             ordersAccepted = orders.Count(o => o.Status == "accepted"),
             ordersRejected = orders.Count(o => o.Status == "rejected"),
-            lossBatches = movements.Where(m => m.Kind == "expiry").Select(m => m.BatchId).Distinct().Count(),
+            lossBatches = movements.Where(m => m.Kind is "expiry" or "write_off").Select(m => m.BatchId).Distinct().Count(),
             costs = new[] { "RUB", "USD", "EUR" }.Select(currency => new { currency,
                 consumed = -movements.Where(m=>m.Kind=="order").Sum(m=>m.Quantity * (prices.TryGetValue(m.BatchId, out var b) && b.Currency==currency ? b.UnitCost??0 : 0)),
-                wasted = -movements.Where(m=>m.Kind=="expiry").Sum(m=>m.Quantity * (prices.TryGetValue(m.BatchId, out var b) && b.Currency==currency ? b.UnitCost??0 : 0)) }),
+                wasted = -movements.Where(m=>m.Kind is "expiry" or "write_off").Sum(m=>m.Quantity * (prices.TryGetValue(m.BatchId, out var b) && b.Currency==currency ? b.UnitCost??0 : 0)) }),
             pricedMovements = movements.Count(Priced),
             totalMovements = movements.Count,
-            priceCoverage = new[] { "order", "expiry" }.Select(kind => new { kind, priced = movements.Count(m => m.Kind == kind && Priced(m)), total = movements.Count(m => m.Kind == kind) }),
+            priceCoverage = new[] { "order", "expiry" }.Select(kind => new { kind, priced = movements.Count(m => (kind=="expiry"?m.Kind is "expiry" or "write_off":m.Kind==kind) && Priced(m)), total = movements.Count(m => (kind=="expiry"?m.Kind is "expiry" or "write_off":m.Kind==kind)) }),
             daily = Enumerable.Range(0, (lastDay - firstDay).Days + 1).Select(i => {
                 var day = firstDay.AddDays(i); var counts = days.GetValueOrDefault(day);
                 return new { day = day.ToString("yyyy-MM-dd"), accepted = counts?.accepted ?? 0, rejected = counts?.rejected ?? 0 }; })
@@ -216,12 +216,12 @@ public static class Insights
             dishes = s.Dishes.Select(d => new { d.Id, d.Name, d.Category, d.Ingredients, d.Archived, portions = d.Archived ? 0 : Inventory.Portions(s, d, now),
                 shortages = Inventory.Missing(s, d.Ingredients.ToDictionary(i => i.ProductId, i => i.Quantity), new[] { d.Id }, now) }),
             batches = s.Batches.OrderByDescending(b => b.RemainingQuantity > 0).ThenBy(b => b.ExpiresAt).Take(500).Select(b => new { b.Id, b.DeliveryId, b.ProductId, b.InitialQuantity, b.RemainingQuantity, b.ReceivedAt, b.ExpiresAt, b.ManufacturedAt, b.ShelfLifeHours, b.ExpiryBasis, b.UnitCost, b.Currency,
-                status = b.RemainingQuantity == 0 ? "empty" : b.ExpiresAt <= now ? "expired" : b.ExpiresAt <= now.AddHours((double)Math.Min(Inventory.Product(s,b.ProductId).WarningHours, s.Settings.WarningHours)) ? "warning" : "fresh" }),
+                status = Inventory.BatchStatus(s,b,now) }),
             expiringBatches = s.Batches.Where(Warning).OrderBy(b => b.ExpiresAt).ThenBy(b => b.Id).Take(5),
             deliveries = s.Deliveries.OrderByDescending(x => x.CreatedAt).Take(100), orders = s.Orders.OrderByDescending(x => x.CreatedAt).Take(100),
             movements = s.Movements.OrderByDescending(x => x.At).Take(100), recommendations = recommendations.Ranking, salePlan = recommendations.Plan,
             procurement = Purchases(s, now), forecasts = Forecasts(s, now), analytics = Analytics(s, analyticsStart, now),
-            totals = new { batches = totals?.GetValueOrDefault("batches") ?? s.Batches.Count, activeBatches = s.Batches.Count(b => b.RemainingQuantity > 0), warningBatches = s.Batches.Count(Warning), deliveries = totals?.GetValueOrDefault("deliveries") ?? s.Deliveries.Count, orders = totals?.GetValueOrDefault("orders") ?? s.Orders.Count, movements = totals?.GetValueOrDefault("movements") ?? s.Movements.Count },
+            totals = new { batches = totals?.GetValueOrDefault("batches") ?? s.Batches.Count, activeBatches = s.Batches.Count(b => b.RemainingQuantity > 0), warningBatches = s.Batches.Count(Warning), expiredBatches=s.Batches.Count(b=>b.RemainingQuantity>0&&b.ExpiresAt<=now), deliveries = totals?.GetValueOrDefault("deliveries") ?? s.Deliveries.Count, orders = totals?.GetValueOrDefault("orders") ?? s.Orders.Count, movements = totals?.GetValueOrDefault("movements") ?? s.Movements.Count },
             warning = "Прогноз предполагает равномерный спрос. История принятых заказов может занижать спрос во время дефицита. Количества разных единиц не суммируются." };
     }
 }

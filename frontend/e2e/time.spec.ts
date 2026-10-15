@@ -17,12 +17,12 @@ for(const demoOffsetHours of [0,8]) {
     await page.route('**/api/**',async route=>{
       const path=new URL(route.request().url()).pathname;
       if(path==='/api/events')return route.fulfill({contentType:'text/event-stream',body:': connected\n\n'});
-      const body=path==='/api/session'?{name:'Управляющий',demo:true}:
+      const body=['/api/delivery-requests','/api/order-requests','/api/procurement-requests'].includes(path)?{items:[],total:0,page:1,size:50}:['/api/accounts','/api/offers/overrides'].includes(path)?[]:path==='/api/session'?{id:'mock-manager',role:'manager',name:'Управляющий',demo:true}:
         path==='/api/history/deliveries'?{items:[delivery],total:1}:
         {now,demoOffsetHours,revision:1,settings:{timezone:'Europe/Moscow'},products:[],dishes:[],batches:[],deliveries:[delivery],orders:[],movements:[],totals:{deliveries:1}};
       await route.fulfill({json:body});
     });
-    await page.goto('/deliveries');
+    await page.goto('/deliveries');await page.getByRole('tab',{name:'Проведённые поставки'}).click();
     await expect(page.getByTestId('current-time')).toContainText(demoOffsetHours?'08:00:45':'00:00:45');
     await expect(page.getByTestId('current-time')).toContainText('Europe/Moscow');
     await expect(page.locator('.revision')).toContainText('Проверено 00:00:45');

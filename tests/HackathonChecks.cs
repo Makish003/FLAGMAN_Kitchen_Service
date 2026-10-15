@@ -75,7 +75,7 @@ public static class HackathonChecks
         test("H12–H13 historical prices, kg conversion, exact actual costs and currencies",()=>{
             var s=Fixture([1000],[[100]]);Check(s.Batches[0].UnitCost is null);
             Inventory.Deliver(s,new("priced",[new("p0",2,"kg",Now.AddHours(2),UnitCost:300,Currency:"RUB")]),"price",Now);Check(s.Batches[1].UnitCost==0.3m);
-            Inventory.PlaceOrder(s,new([new("d0",5)]),"sale",Now);Inventory.Expire(s,Now.AddHours(2));
+            Inventory.PlaceOrder(s,new([new("d0",5)]),"sale",Now);foreach(var batch in s.Batches.Where(b=>b.RemainingQuantity>0&&b.ExpiresAt<=Now.AddHours(2)).ToList())Inventory.WriteOffExpired(s,batch.Id,new("test-manager","manager"),"write-"+batch.Id,Now.AddHours(2));
             var analytics=JsonSerializer.SerializeToElement(Insights.Analytics(s,Now,Now.AddHours(3)),Store.Json);var cost=analytics.GetProperty("costs")[0];Check(cost.GetProperty("consumed").GetDecimal()==150);Check(cost.GetProperty("wasted").GetDecimal()==450);
             var result=SalesPlanner.Calculate(s,Now,new());Check(result.PricedBatches==0);
         });

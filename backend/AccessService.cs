@@ -1,0 +1,26 @@
+using System.Security.Claims;
+using System.Security.Cryptography;
+using System.Text;
+using Microsoft.AspNetCore.Identity;
+namespace Flagman;
+public static class AccessService
+{
+ static readonly PasswordHasher<UserAccount> Hasher=new();
+ public static void RequireRole(Actor actor,params string[] roles)=>Inventory.Require(roles.Contains(actor.Role),"Недостаточно прав",403);
+ public static void RequireOwner(Actor actor,string ownerId)=>Inventory.Require(actor.Role=="manager"||actor.UserId==ownerId,"Запись не найдена",404);
+ public static Actor Current(State s,HttpContext ctx){Inventory.Require(Valid(s,ctx.User),"Сессия истекла",401);return Actor(ctx);}
+ public static Actor Actor(HttpContext ctx)=>new(ctx.User.FindFirstValue(ClaimTypes.NameIdentifier)??throw new DomainException("Войдите в систему",401),ctx.User.FindFirstValue(ClaimTypes.Role)??"");
+ public static void Bootstrap(State s,string password){if(s.Users.Count>0)return;var u=new UserAccount(Inventory.Id(),"manager","Управляющий","manager",true,"");s.Users.Add(u with {PasswordHash=Hasher.HashPassword(u,password)});}
+ public static UserAccount? Login(State s,string? login,string? password){var u=s.Users.Find(x=>x.Active&&x.Login==login);return u!=null&&password!=null&&Hasher.VerifyHashedPassword(u,u.PasswordHash,password)!=PasswordVerificationResult.Failed?u:null;}
+ public static UserAccount SaveAccount(State s,string? id,AccountInput input,Actor actor,DateTimeOffset now){input=input with{Login=input.Login?.Trim()??"",Name=input.Name?.Trim()??""};RequireRole(actor,"manager");Inventory.Require(input.Login is {Length:>0 and <=80}&&input.Name is {Length:>0 and <=120}&&new[]{"manager","supplier","waiter"}.Contains(input.Role),"Укажите логин, имя и роль");var old=id==null?null:s.Users.Find(x=>x.Id==id)??throw new DomainException("Аккаунт не найден",404);Inventory.Require(s.Users.All(x=>x.Id==id||!x.Login.Equals(input.Login,StringComparison.OrdinalIgnoreCase)),"Логин занят",409);Inventory.Require(old!=null||input.Password is {Length:>=10 and <=256},"Пароль: 10–256 символов");Inventory.Require(input.Password==null||input.Password.Length is >=10 and <=256,"Пароль: 10–256 символов");Inventory.Require(old?.Role!="manager"||!old.Active||input.Role=="manager"&&input.Active||s.Users.Any(x=>x.Id!=id&&x.Active&&x.Role=="manager"),"Нельзя отключить последнего менеджера",409);var u=new UserAccount(old?.Id??Inventory.Id(),input.Login.Trim(),input.Name.Trim(),input.Role,input.Active,old?.PasswordHash??"",(old?.SessionVersion??0)+1);if(input.Password!=null)u=u with {PasswordHash=Hasher.HashPassword(u,input.Password)};s.Users.RemoveAll(x=>x.Id==u.Id);s.Users.Add(u);Audit(s,actor,"account.saved",u.Id,now);return u;}
+ public record IssuedKey(string Id,string Token);
+ public static IssuedKey IssueKey(State s,string userId,Actor actor,DateTimeOffset now){RequireRole(actor,"manager");var u=s.Users.Find(x=>x.Id==userId&&x.Active)??throw new DomainException("Аккаунт не найден",404);var token=Convert.ToHexString(RandomNumberGenerator.GetBytes(32));var k=new ApiCredential(Inventory.Id(),userId,Hash(token),now,null,u.SessionVersion);s.Credentials.Add(k);Audit(s,actor,"key.issued",k.Id,now);return new(k.Id,token);}
+ public static void RevokeKey(State s,string id,Actor actor,DateTimeOffset now){RequireRole(actor,"manager");var k=s.Credentials.Find(x=>x.Id==id)??throw new DomainException("Ключ не найден",404);s.Credentials[s.Credentials.IndexOf(k)]=k with {RevokedAt=now};Audit(s,actor,"key.revoked",id,now);}
+ static string Hash(string token)=>Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token)));
+ public static Actor? Bearer(State s,string token){var hash=Hash(token);var k=s.Credentials.Find(x=>x.Hash==hash&&x.RevokedAt==null);var u=k==null?null:s.Users.Find(x=>x.Id==k.UserId&&x.Active&&x.SessionVersion==k.SessionVersion);return u==null?null:new(u.Id,u.Role);}
+ public static ClaimsPrincipal BearerPrincipal(State s,string token){var actor=Bearer(s,token);if(actor==null)return new ClaimsPrincipal();var u=s.Users.Single(x=>x.Id==actor.UserId);var principal=Principal(u,"Bearer");((ClaimsIdentity)principal.Identity!).AddClaim(new("credentialId",s.Credentials.Single(k=>k.Hash==Hash(token)&&k.RevokedAt==null).Id));return principal;}
+ public static bool Valid(State s,ClaimsPrincipal? p){var id=p?.FindFirstValue(ClaimTypes.NameIdentifier);var credential=p?.FindFirstValue("credentialId");if(credential!=null&&!s.Credentials.Any(k=>k.Id==credential&&k.UserId==id&&k.RevokedAt==null&&k.SessionVersion.ToString()==p?.FindFirstValue("sessionVersion")))return false;return s.Users.Any(x=>x.Id==id&&x.Active&&x.Role==p?.FindFirstValue(ClaimTypes.Role)&&x.SessionVersion.ToString()==p?.FindFirstValue("sessionVersion"));}
+ public static ClaimsPrincipal Principal(UserAccount u,string scheme)=>new(new ClaimsIdentity([new(ClaimTypes.NameIdentifier,u.Id),new(ClaimTypes.Name,u.Name),new(ClaimTypes.Role,u.Role),new("sessionVersion",u.SessionVersion.ToString()),new("sessionId",Inventory.Id())],scheme));
+ public static object Public(UserAccount u)=>new{u.Id,u.Login,u.Name,u.Role,u.Active,u.SessionVersion};
+ public static void Audit(State s,Actor a,string action,string id,DateTimeOffset now){s.Audit.Add(new(Inventory.Id(),action,a.UserId,now,id));s.Emit(action,now);}
+}

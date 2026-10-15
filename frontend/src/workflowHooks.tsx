@@ -1,0 +1,15 @@
+import {useCallback,useEffect,useRef,useState} from 'react';
+import {api,durableOperation,pendingIntent,recoverPending} from './api';
+import {Button} from './components';
+let sharedStream:EventSource|undefined;
+const streamListeners=new Set<()=>void>();
+function subscribeChanges(listener:()=>void){streamListeners.add(listener);if(!sharedStream){sharedStream=new EventSource('/api/events');const emit=()=>streamListeners.forEach(fn=>fn());sharedStream.addEventListener('sync',emit);sharedStream.addEventListener('change',emit);}return()=>{streamListeners.delete(listener);if(!streamListeners.size){sharedStream?.close();sharedStream=undefined;}};}
+export const workflowStatus=(s:string)=>({submitted:'Ожидает решения',accepted:'Принята',partially_accepted:'Принята частично',rejected:'Отклонена',cancelled:'Отменена'}[s]??s);
+export function useWorkflowResource<T>(path:string){
+ const [data,setData]=useState<T>();const [error,setError]=useState('');const generation=useRef(0);
+ const refresh=useCallback(async()=>{const version=++generation.current;try{const next=await api<T>(path);if(version===generation.current){setData(next);setError('');}}catch(e){if(version===generation.current)setError((e as Error).message);}},[path]);
+ useEffect(()=>{refresh();let timer:ReturnType<typeof setTimeout>;const changed=()=>{clearTimeout(timer);timer=setTimeout(refresh,150);};const unsubscribe=subscribeChanges(changed);const poll=setInterval(refresh,30000);return()=>{generation.current++;unsubscribe();clearTimeout(timer);clearInterval(poll);};},[refresh]);
+ return {data,error,refresh};
+}
+export function useWorkflowCommand(refresh:()=>Promise<void>){const [busy,setBusy]=useState(false),[error,setError]=useState('');const run=async(path:string,body:unknown)=>{setBusy(true);setError('');try{const pending=pendingIntent();if(pending){if(pending.path!==path||JSON.stringify(pending.body)!==JSON.stringify(body))throw new Error("Состав сохранённой операции отличается. Сначала восстановите её результат отдельной кнопкой.");const recovered=await recoverPending();await refresh();return recovered;}const result=await durableOperation(path,body,crypto.randomUUID());await refresh();return result;}catch(e){setError((e as Error).message);return null;}finally{setBusy(false);}};return{run,busy,error};}
+export function WorkflowRecovery(){const[error,setError]=useState(''),[busy,setBusy]=useState(false),[pending,setPending]=useState(!!pendingIntent());useEffect(()=>{const timer=setInterval(()=>setPending(!!pendingIntent()),1000);return()=>clearInterval(timer);},[]);return pending?<div className="notice danger" role="alert"><p>Результат операции неизвестен. Её состав и ключ сохранены.</p><Button disabled={busy} className="button secondary" onClick={async()=>{setBusy(true);try{await recoverPending();setPending(false);setError('');}catch(e){setError((e as Error).message);}finally{setBusy(false);}}}>Восстановить результат</Button>{error&&<p>{error}</p>}</div>:null;}

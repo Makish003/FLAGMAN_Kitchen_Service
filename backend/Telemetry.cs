@@ -9,7 +9,7 @@ public static class Telemetry
     public static readonly Histogram<double> RequestMs = Meter.CreateHistogram<double>("flagman.request.ms");
     public static readonly Counter<long> Errors = Meter.CreateCounter<long>("flagman.errors");
     public static readonly Counter<long> Busy = Meter.CreateCounter<long>("flagman.sqlite.busy");
-    public static readonly Histogram<double> ExpiryLag = Meter.CreateHistogram<double>("flagman.expiry.lag.ms");
+    public static readonly Histogram<double> ExpiryLag = Meter.CreateHistogram<double>("flagman.expiry.status.lag.ms");
     public static double LastExpiryLagMs { get; set; }
     public static DateTimeOffset? MonitorSuccess { get; set; }
     public static string? MonitorError { get; set; }

@@ -13,7 +13,9 @@ test.beforeEach(async({page})=>{
     if(pathname==='/api/events')return route.fulfill({contentType:'text/event-stream',body:': connected\n\n'});
     const now='2026-10-11T05:00:00Z';
     let body:any={now,revision:1,settings:{timezone:'Europe/Moscow',warningHours:48},products:[{id:'t',name:'Томаты',unit:'g',usable:1000,physical:1000}],dishes:[{id:'a',name:'Блюдо А',portions:2,ingredients:[{productId:'t',quantity:500}]}],batches:[],deliveries:[],orders:[],movements:[],totals:{batches:0,deliveries:0,orders:0,movements:0}};
-    if(pathname==='/api/session')body={name:'Управляющий',demo:true};
+    if(['/api/delivery-requests','/api/order-requests','/api/procurement-requests'].includes(pathname))return route.fulfill({json:{items:[],total:0,page:1,size:50}});
+    if(['/api/accounts','/api/offers/overrides'].includes(pathname))return route.fulfill({json:[]});
+    if(pathname==='/api/session')body={id:'mock-manager',role:'manager',name:'Управляющий',demo:true};
     if(pathname.startsWith('/api/history/'))body={items:[],total:0};
     if(pathname==='/api/deliveries/preview') {
       const input=route.request().postDataJSON();

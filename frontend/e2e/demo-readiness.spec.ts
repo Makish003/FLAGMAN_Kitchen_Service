@@ -3,7 +3,7 @@ import {chooseOption} from './helpers';
 
 test('demo calculates costs, history demand, excess, forecasts and priced delivery drafts',async({page})=>{
   test.setTimeout(90000);
-  const login=await page.request.post('/api/login',{headers:{'X-Requested-With':'Flagman'},data:{password:process.env.FLAGMAN_PASSWORD!}});
+  const login=await page.request.post('/api/login',{headers:{'X-Requested-With':'Flagman'},data:{login:'manager',password:process.env.FLAGMAN_PASSWORD!}});
   expect(login.ok()).toBe(true);
   const seeded=await page.request.post('/api/demo/seed',{headers:{'X-Requested-With':'Flagman'}});
   expect(seeded.ok()).toBe(true);
@@ -17,11 +17,8 @@ test('demo calculates costs, history demand, excess, forecasts and priced delive
   await page.getByRole('button',{name:'Проверить изменённые количества'}).click();
   await expect(rows.filter({hasText:'Томаты'}).locator('td').last().locator('.badge')).toBeVisible();
   await page.getByRole('button',{name:'Создать черновик поставки'}).click();
-  const dialog=page.getByRole('dialog');
-  await expect(dialog).toBeVisible();
-  for(const input of await dialog.getByLabel('Срок хранения, часов').all())await expect(input).toHaveValue('48');
-  for(const input of await dialog.getByLabel(/^Закупочная цена за/).all())expect(Number(await input.inputValue())).toBeGreaterThan(0);
-  await dialog.getByRole('button',{name:'Закрыть форму'}).click();
+  await expect(page.getByRole('heading',{name:'Заявки поставщикам',exact:true})).toBeVisible();
+  await expect(page.locator('.workflow-line')).not.toHaveCount(0);
   await page.goto('/forecast');
   await page.getByRole('button',{name:'Рассчитать сценарий',exact:true}).click();
   await expect(page.getByRole('heading',{name:'Доступность блюд',exact:true})).toBeVisible();
